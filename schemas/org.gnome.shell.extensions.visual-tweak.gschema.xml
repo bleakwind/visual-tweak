@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.visual-tweak"
+          path="/org/gnome/shell/extensions/visual-tweak/">
+
+    <key name="panel-enable" type="b">
+      <default>true</default>
+      <summary>Enable Panel Beautify</summary>
+      <description>When enabled, the panel applies beautification effects</description>
+    </key>
+
+    <key name="panel-bgopacity" type="i">
+      <default>30</default>
+      <summary>Panel Background Opacity</summary>
+      <description>Opacity of the panel background, 0 = fully transparent, 100 = fully opaque</description>
+    </key>
+
+    <key name="panel-bgcolor-enable" type="b">
+      <default>true</default>
+      <summary>Custom Background Color</summary>
+      <description>When enabled, the panel background uses the color specified below</description>
+    </key>
+
+    <key name="panel-bgcolor-color" type="s">
+      <default>'#000000'</default>
+      <summary>Background Color</summary>
+      <description>Panel background color in hexadecimal format, e.g. #000000 or #1c1c1c</description>
+    </key>
+
+    <key name="panel-fgcolor-enable" type="b">
+      <default>true</default>
+      <summary>Custom Text Color</summary>
+      <description>When enabled, the panel text uses the color specified below</description>
+    </key>
+
+    <key name="panel-fgcolor-color" type="s">
+      <default>'#ffffff'</default>
+      <summary>Text Color</summary>
+      <description>Panel text color in hexadecimal format, e.g. #ffffff or #ececec</description>
+    </key>
+
+    <key name="clock-enable" type="b">
+      <default>true</default>
+      <summary>Enable Clock Format</summary>
+      <description>When enabled, the panel clock uses the custom format specified</description>
+    </key>
+
+    <key name="clock-format" type="s">
+      <default>'%Y-%m-%d %H:%M'</default>
+      <summary>Clock Format</summary>
+      <description>Custom clock format using strftime-style specifiers, e.g. %Y-%m-%d %H:%M:%S or %H:%M</description>
+    </key>
+
+  </schema>
+</schemalist>
+

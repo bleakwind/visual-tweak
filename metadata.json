@@ -1,0 +1,13 @@
+{
+  "name": "Visual Tweak",
+  "description": "Configure some display effects of GNOME Shell.",
+  "settings-schema": "org.gnome.shell.extensions.visual-tweak",
+  "uuid": "visual-tweak@bleakwind.github.com",
+  "gettext-domain": "visual-tweak@bleakwind.github.com",
+  "shell-version": ["45", "46", "47", "48", "49"],
+  "url": "https://github.com/bleakwind/visual-tweak",
+  "donations": {
+    "github": "bleakwind"
+  }
+}
+

@@ -1,0 +1,218 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-10-14 09:39+0800\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=CHARSET\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: prefs.js:13 prefs.js:105 prefs.js:390
+msgid "Visual Tweak"
+msgstr ""
+
+#: prefs.js:121
+msgid "Panel Beautify"
+msgstr ""
+
+#: prefs.js:122
+msgid "Control whether the panel beautification is enabled"
+msgstr ""
+
+#: prefs.js:126
+msgid "Enable Panel Beautify"
+msgstr ""
+
+#: prefs.js:127
+msgid "When enabled, the panel applies beautification effects"
+msgstr ""
+
+#: prefs.js:135
+msgid "Panel Background Opacity"
+msgstr ""
+
+#: prefs.js:136
+msgid ""
+"Opacity of the panel background, 0 = fully transparent, 100 = fully opaque"
+msgstr ""
+
+#: prefs.js:146
+msgid "Custom Background Color"
+msgstr ""
+
+#: prefs.js:147
+msgid "When enabled, the panel background uses the color specified below"
+msgstr ""
+
+#: prefs.js:155
+msgid "Background Color"
+msgstr ""
+
+#: prefs.js:156
+msgid "Panel background color in hexadecimal format, e.g. #000000 or #1c1c1c"
+msgstr ""
+
+#: prefs.js:167
+msgid "Custom Text Color"
+msgstr ""
+
+#: prefs.js:168
+msgid "When enabled, the panel text uses the color specified below"
+msgstr ""
+
+#: prefs.js:176
+msgid "Text Color"
+msgstr ""
+
+#: prefs.js:177
+msgid "Panel text color in hexadecimal format, e.g. #ffffff or #ececec"
+msgstr ""
+
+#: prefs.js:189
+msgid "Panel"
+msgstr ""
+
+#: prefs.js:196 prefs.js:208
+msgid "Clock Format"
+msgstr ""
+
+#: prefs.js:197
+msgid "Customize the format of the panel clock"
+msgstr ""
+
+#: prefs.js:201
+msgid "Enable Clock Format"
+msgstr ""
+
+#: prefs.js:202
+msgid "When enabled, the panel clock uses the custom format specified"
+msgstr ""
+
+#: prefs.js:209
+msgid ""
+"Custom clock format using strftime-style specifiers, e.g. %Y-%m-%d %H:%M:%S "
+"or %H:%M"
+msgstr ""
+
+#: prefs.js:229 prefs.js:258
+msgid "Edit"
+msgstr ""
+
+#: prefs.js:241
+msgid "Apply"
+msgstr ""
+
+#: prefs.js:289
+msgid "Year (4-digit)"
+msgstr ""
+
+#: prefs.js:290
+msgid "Year (2-digit)"
+msgstr ""
+
+#: prefs.js:291
+msgid "Month (01-12)"
+msgstr ""
+
+#: prefs.js:292
+msgid "Day (01-31)"
+msgstr ""
+
+#: prefs.js:293
+msgid "Day (1-31)"
+msgstr ""
+
+#: prefs.js:294
+msgid "Hour, 24h (00-23)"
+msgstr ""
+
+#: prefs.js:295
+msgid "Hour, 12h (01-12)"
+msgstr ""
+
+#: prefs.js:296
+msgid "Minute (00-59)"
+msgstr ""
+
+#: prefs.js:297
+msgid "Second (00-59)"
+msgstr ""
+
+#: prefs.js:298
+msgid "AM/PM"
+msgstr ""
+
+#: prefs.js:299
+msgid "Weekday (full)"
+msgstr ""
+
+#: prefs.js:300
+msgid "Weekday (short)"
+msgstr ""
+
+#: prefs.js:301
+msgid "Month name (full)"
+msgstr ""
+
+#: prefs.js:302
+msgid "Month name (short)"
+msgstr ""
+
+#: prefs.js:303
+msgid "Day of year (001-366)"
+msgstr ""
+
+#: prefs.js:304
+msgid "Weekday (1-7, Mon=1)"
+msgstr ""
+
+#: prefs.js:305
+msgid "Weekday (0-6, Sun=0)"
+msgstr ""
+
+#: prefs.js:306
+msgid "ISO week number (01-53)"
+msgstr ""
+
+#: prefs.js:307
+msgid "Time zone name"
+msgstr ""
+
+#: prefs.js:308
+msgid "Time zone offset (+hhmm)"
+msgstr ""
+
+#: prefs.js:309
+msgid "Literal %"
+msgstr ""
+
+#: prefs.js:351
+msgid "Format Specifiers"
+msgstr ""
+
+#: prefs.js:384
+msgid "Clock"
+msgstr ""
+
+#: prefs.js:391
+msgid "Configure some display effects of GNOME Shell"
+msgstr ""
+
+#: prefs.js:395
+msgid "Homepage"
+msgstr ""
+
+#: prefs.js:405
+msgid "About"
+msgstr ""
+

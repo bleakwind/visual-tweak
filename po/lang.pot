@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-14 09:39+0800\n"
+"POT-Creation-Date: 2026-10-18 05:29+0800\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,202 +17,291 @@ msgstr ""
 "Content-Type: text/plain; charset=CHARSET\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: prefs.js:13 prefs.js:105 prefs.js:390
+#: prefs.js:32 prefs.js:137 prefs.js:645
 msgid "Visual Tweak"
 msgstr ""
 
-#: prefs.js:121
+#: prefs.js:153
 msgid "Panel Beautify"
 msgstr ""
 
-#: prefs.js:122
+#: prefs.js:154
 msgid "Control whether the panel beautification is enabled"
 msgstr ""
 
-#: prefs.js:126
+#: prefs.js:158
 msgid "Enable Panel Beautify"
 msgstr ""
 
-#: prefs.js:127
+#: prefs.js:159
 msgid "When enabled, the panel applies beautification effects"
 msgstr ""
 
-#: prefs.js:135
+#: prefs.js:167
 msgid "Panel Background Opacity"
 msgstr ""
 
-#: prefs.js:136
-msgid ""
-"Opacity of the panel background, 0 = fully transparent, 100 = fully opaque"
+#: prefs.js:168
+msgid "Opacity of the panel background, 0 = fully transparent, 100 = fully opaque"
 msgstr ""
 
-#: prefs.js:146
+#: prefs.js:178
 msgid "Custom Background Color"
 msgstr ""
 
-#: prefs.js:147
+#: prefs.js:179
 msgid "When enabled, the panel background uses the color specified below"
 msgstr ""
 
-#: prefs.js:155
+#: prefs.js:187
 msgid "Background Color"
 msgstr ""
 
-#: prefs.js:156
+#: prefs.js:188
 msgid "Panel background color in hexadecimal format, e.g. #000000 or #1c1c1c"
 msgstr ""
 
-#: prefs.js:167
+#: prefs.js:199
 msgid "Custom Text Color"
 msgstr ""
 
-#: prefs.js:168
+#: prefs.js:200
 msgid "When enabled, the panel text uses the color specified below"
 msgstr ""
 
-#: prefs.js:176
+#: prefs.js:208
 msgid "Text Color"
 msgstr ""
 
-#: prefs.js:177
+#: prefs.js:209
 msgid "Panel text color in hexadecimal format, e.g. #ffffff or #ececec"
 msgstr ""
 
-#: prefs.js:189
+#: prefs.js:221
 msgid "Panel"
 msgstr ""
 
-#: prefs.js:196 prefs.js:208
-msgid "Clock Format"
+#: prefs.js:228
+msgid "Window Effects"
 msgstr ""
 
-#: prefs.js:197
-msgid "Customize the format of the panel clock"
+#: prefs.js:229
+msgid "Control window display effects"
 msgstr ""
 
-#: prefs.js:201
-msgid "Enable Clock Format"
+#: prefs.js:233
+msgid "Enable Window Open Effect"
 msgstr ""
 
-#: prefs.js:202
-msgid "When enabled, the panel clock uses the custom format specified"
+#: prefs.js:234
+msgid "When enabled, play animation effect when opening window"
 msgstr ""
 
-#: prefs.js:209
-msgid ""
-"Custom clock format using strftime-style specifiers, e.g. %Y-%m-%d %H:%M:%S "
-"or %H:%M"
-msgstr ""
-
-#: prefs.js:229 prefs.js:258
-msgid "Edit"
+#: prefs.js:240
+msgid "Window Open Effect Type"
 msgstr ""
 
 #: prefs.js:241
-msgid "Apply"
+msgid "Select window open animation effect"
 msgstr ""
 
-#: prefs.js:289
-msgid "Year (4-digit)"
+#: prefs.js:244 prefs.js:247 prefs.js:295 prefs.js:298
+msgid "TV Effect"
 msgstr ""
 
-#: prefs.js:290
-msgid "Year (2-digit)"
+#: prefs.js:245 prefs.js:248 prefs.js:296 prefs.js:299
+msgid "Blinds Effect"
+msgstr ""
+
+#: prefs.js:284
+msgid "Enable Window Close Effect"
+msgstr ""
+
+#: prefs.js:285
+msgid "When enabled, play animation effect when closing window"
 msgstr ""
 
 #: prefs.js:291
-msgid "Month (01-12)"
+msgid "Window Close Effect Type"
 msgstr ""
 
 #: prefs.js:292
+msgid "Select window close animation effect"
+msgstr ""
+
+#: prefs.js:335
+msgid "Enable Window Minimize Effect"
+msgstr ""
+
+#: prefs.js:336
+msgid "When enabled, play animation effect when minimizing window"
+msgstr ""
+
+#: prefs.js:342
+msgid "Window Minimize Effect Type"
+msgstr ""
+
+#: prefs.js:343
+msgid "Select window minimize animation effect"
+msgstr ""
+
+#: prefs.js:346 prefs.js:349 prefs.js:397 prefs.js:400
+msgid "Genie Effect"
+msgstr ""
+
+#: prefs.js:347 prefs.js:350 prefs.js:398 prefs.js:401
+msgid "Scale Effect"
+msgstr ""
+
+#: prefs.js:386
+msgid "Enable Window Unminimize Effect"
+msgstr ""
+
+#: prefs.js:387
+msgid "When enabled, play animation effect when restoring window"
+msgstr ""
+
+#: prefs.js:393
+msgid "Window Unminimize Effect Type"
+msgstr ""
+
+#: prefs.js:394
+msgid "Select window unminimize animation effect"
+msgstr ""
+
+#: prefs.js:437
+msgid "Window"
+msgstr ""
+
+#: prefs.js:444 prefs.js:456
+msgid "Clock Format"
+msgstr ""
+
+#: prefs.js:445
+msgid "Customize the format of the panel clock"
+msgstr ""
+
+#: prefs.js:449
+msgid "Enable Clock Format"
+msgstr ""
+
+#: prefs.js:450
+msgid "When enabled, the panel clock uses the custom format specified"
+msgstr ""
+
+#: prefs.js:457
+msgid "Custom clock format using strftime-style specifiers, e.g. %Y-%m-%d %H:%M or %H:%M:%S"
+msgstr ""
+
+#: prefs.js:477 prefs.js:506
+msgid "Edit"
+msgstr ""
+
+#: prefs.js:489
+msgid "Apply"
+msgstr ""
+
+#: prefs.js:543
+msgid "Year (4-digit)"
+msgstr ""
+
+#: prefs.js:544
+msgid "Year (2-digit)"
+msgstr ""
+
+#: prefs.js:545
+msgid "Month (01-12)"
+msgstr ""
+
+#: prefs.js:546
 msgid "Day (01-31)"
 msgstr ""
 
-#: prefs.js:293
+#: prefs.js:547
 msgid "Day (1-31)"
 msgstr ""
 
-#: prefs.js:294
+#: prefs.js:548
 msgid "Hour, 24h (00-23)"
 msgstr ""
 
-#: prefs.js:295
+#: prefs.js:549
 msgid "Hour, 12h (01-12)"
 msgstr ""
 
-#: prefs.js:296
+#: prefs.js:550
 msgid "Minute (00-59)"
 msgstr ""
 
-#: prefs.js:297
+#: prefs.js:551
 msgid "Second (00-59)"
 msgstr ""
 
-#: prefs.js:298
+#: prefs.js:552
 msgid "AM/PM"
 msgstr ""
 
-#: prefs.js:299
+#: prefs.js:553
 msgid "Weekday (full)"
 msgstr ""
 
-#: prefs.js:300
+#: prefs.js:554
 msgid "Weekday (short)"
 msgstr ""
 
-#: prefs.js:301
+#: prefs.js:555
 msgid "Month name (full)"
 msgstr ""
 
-#: prefs.js:302
+#: prefs.js:556
 msgid "Month name (short)"
 msgstr ""
 
-#: prefs.js:303
+#: prefs.js:557
 msgid "Day of year (001-366)"
 msgstr ""
 
-#: prefs.js:304
+#: prefs.js:558
 msgid "Weekday (1-7, Mon=1)"
 msgstr ""
 
-#: prefs.js:305
+#: prefs.js:559
 msgid "Weekday (0-6, Sun=0)"
 msgstr ""
 
-#: prefs.js:306
+#: prefs.js:560
 msgid "ISO week number (01-53)"
 msgstr ""
 
-#: prefs.js:307
+#: prefs.js:561
 msgid "Time zone name"
 msgstr ""
 
-#: prefs.js:308
+#: prefs.js:562
 msgid "Time zone offset (+hhmm)"
 msgstr ""
 
-#: prefs.js:309
+#: prefs.js:563
 msgid "Literal %"
 msgstr ""
 
-#: prefs.js:351
+#: prefs.js:605
 msgid "Format Specifiers"
 msgstr ""
 
-#: prefs.js:384
+#: prefs.js:638
 msgid "Clock"
 msgstr ""
 
-#: prefs.js:391
+#: prefs.js:646
 msgid "Configure some display effects of GNOME Shell"
 msgstr ""
 
-#: prefs.js:395
+#: prefs.js:650
 msgid "Homepage"
 msgstr ""
 
-#: prefs.js:405
+#: prefs.js:660
 msgid "About"
 msgstr ""
 

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-14 09:39+0800\n"
-"PO-Revision-Date: 2026-10-14 10:10+0800\n"
+"POT-Creation-Date: 2026-10-18 05:29+0800\n"
+"PO-Revision-Date: 2026-10-18 05:36+0800\n"
 "Last-Translator: Rick Wu <bleakwind@qq.com>\n"
 "Language-Team: Chinese (simplified) <i18n-zh@googlegroups.com>\n"
 "Language: zh_CN\n"
@@ -16,202 +16,291 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: prefs.js:13 prefs.js:105 prefs.js:390
+#: prefs.js:32 prefs.js:137 prefs.js:645
 msgid "Visual Tweak"
 msgstr "Visual Tweak"
 
-#: prefs.js:121
+#: prefs.js:153
 msgid "Panel Beautify"
 msgstr "面板美化"
 
-#: prefs.js:122
+#: prefs.js:154
 msgid "Control whether the panel beautification is enabled"
 msgstr "控制是否启用面板美化"
 
-#: prefs.js:126
+#: prefs.js:158
 msgid "Enable Panel Beautify"
 msgstr "启用面板美化"
 
-#: prefs.js:127
+#: prefs.js:159
 msgid "When enabled, the panel applies beautification effects"
 msgstr "开启后，面板会应用美化效果"
 
-#: prefs.js:135
+#: prefs.js:167
 msgid "Panel Background Opacity"
 msgstr "面板背景透明度"
 
-#: prefs.js:136
-msgid ""
-"Opacity of the panel background, 0 = fully transparent, 100 = fully opaque"
+#: prefs.js:168
+msgid "Opacity of the panel background, 0 = fully transparent, 100 = fully opaque"
 msgstr "面板背景的透明度，0 = 全透明，100 = 完全不透明"
 
-#: prefs.js:146
+#: prefs.js:178
 msgid "Custom Background Color"
 msgstr "自定义背景颜色"
 
-#: prefs.js:147
+#: prefs.js:179
 msgid "When enabled, the panel background uses the color specified below"
 msgstr "开启后，面板背景使用下方指定的颜色"
 
-#: prefs.js:155
+#: prefs.js:187
 msgid "Background Color"
 msgstr "背景颜色值"
 
-#: prefs.js:156
+#: prefs.js:188
 msgid "Panel background color in hexadecimal format, e.g. #000000 or #1c1c1c"
 msgstr "面板背景颜色，十六进制格式，例如 #000000 或 #1c1c1c"
 
-#: prefs.js:167
+#: prefs.js:199
 msgid "Custom Text Color"
 msgstr "自定义文字颜色"
 
-#: prefs.js:168
+#: prefs.js:200
 msgid "When enabled, the panel text uses the color specified below"
 msgstr "开启后，面板文字使用下方指定的颜色"
 
-#: prefs.js:176
+#: prefs.js:208
 msgid "Text Color"
 msgstr "文字颜色值"
 
-#: prefs.js:177
+#: prefs.js:209
 msgid "Panel text color in hexadecimal format, e.g. #ffffff or #ececec"
 msgstr "面板文字颜色，十六进制格式，例如 #ffffff 或 #ececec"
 
-#: prefs.js:189
+#: prefs.js:221
 msgid "Panel"
 msgstr "面板"
 
-#: prefs.js:196 prefs.js:208
+#: prefs.js:228
+msgid "Window Effects"
+msgstr "窗口效果"
+
+#: prefs.js:229
+msgid "Control window display effects"
+msgstr "控制窗口显示效果"
+
+#: prefs.js:233
+msgid "Enable Window Open Effect"
+msgstr "启用窗口打开效果"
+
+#: prefs.js:234
+msgid "When enabled, play animation effect when opening window"
+msgstr "启用后，打开窗口时播放动画效果"
+
+#: prefs.js:240
+msgid "Window Open Effect Type"
+msgstr "窗口打开效果类型"
+
+#: prefs.js:241
+msgid "Select window open animation effect"
+msgstr "选择窗口打开动画效果"
+
+#: prefs.js:244 prefs.js:247 prefs.js:295 prefs.js:298
+msgid "TV Effect"
+msgstr "电视效果"
+
+#: prefs.js:245 prefs.js:248 prefs.js:296 prefs.js:299
+msgid "Blinds Effect"
+msgstr "百叶窗效果"
+
+#: prefs.js:284
+msgid "Enable Window Close Effect"
+msgstr "启用窗口关闭效果"
+
+#: prefs.js:285
+msgid "When enabled, play animation effect when closing window"
+msgstr "启用后，关闭窗口时播放动画效果"
+
+#: prefs.js:291
+msgid "Window Close Effect Type"
+msgstr "窗口关闭效果类型"
+
+#: prefs.js:292
+msgid "Select window close animation effect"
+msgstr "选择窗口关闭动画效果"
+
+#: prefs.js:335
+msgid "Enable Window Minimize Effect"
+msgstr "启用窗口最小化效果"
+
+#: prefs.js:336
+msgid "When enabled, play animation effect when minimizing window"
+msgstr "启用后，最小化窗口时播放动画效果"
+
+#: prefs.js:342
+msgid "Window Minimize Effect Type"
+msgstr "窗口最小化效果类型"
+
+#: prefs.js:343
+msgid "Select window minimize animation effect"
+msgstr "选择窗口最小化动画效果"
+
+#: prefs.js:346 prefs.js:349 prefs.js:397 prefs.js:400
+msgid "Genie Effect"
+msgstr "神灯效果"
+
+#: prefs.js:347 prefs.js:350 prefs.js:398 prefs.js:401
+msgid "Scale Effect"
+msgstr "缩放效果"
+
+#: prefs.js:386
+msgid "Enable Window Unminimize Effect"
+msgstr "启用窗口还原效果"
+
+#: prefs.js:387
+msgid "When enabled, play animation effect when restoring window"
+msgstr "启用后，还原窗口时播放动画效果"
+
+#: prefs.js:393
+msgid "Window Unminimize Effect Type"
+msgstr "窗口还原效果类型"
+
+#: prefs.js:394
+msgid "Select window unminimize animation effect"
+msgstr "选择窗口还原动画效果"
+
+#: prefs.js:437
+msgid "Window"
+msgstr "窗口"
+
+#: prefs.js:444 prefs.js:456
 msgid "Clock Format"
 msgstr "时钟定制"
 
-#: prefs.js:197
+#: prefs.js:445
 msgid "Customize the format of the panel clock"
 msgstr "定制顶部面板时钟"
 
-#: prefs.js:201
+#: prefs.js:449
 msgid "Enable Clock Format"
 msgstr "打开时钟定制"
 
-#: prefs.js:202
+#: prefs.js:450
 msgid "When enabled, the panel clock uses the custom format specified"
 msgstr "启用后，面板时钟将使用指定的自定义格式"
 
-#: prefs.js:209
-msgid ""
-"Custom clock format using strftime-style specifiers, e.g. %Y-%m-%d %H:%M:%S "
-"or %H:%M"
-msgstr "使用 strftime 风格格式符的自定义时钟格式，例如 %Y-%m-%d %H:%M:%S 或 %H:%M"
+#: prefs.js:457
+msgid "Custom clock format using strftime-style specifiers, e.g. %Y-%m-%d %H:%M or %H:%M:%S"
+msgstr "使用 strftime 风格格式符的自定义时钟格式，例如 %Y-%m-%d %H:%M 或 %H:%M:%S"
 
-#: prefs.js:229 prefs.js:258
+#: prefs.js:477 prefs.js:506
 msgid "Edit"
 msgstr "编辑"
 
-#: prefs.js:241
+#: prefs.js:489
 msgid "Apply"
 msgstr "应用"
 
-#: prefs.js:289
+#: prefs.js:543
 msgid "Year (4-digit)"
 msgstr "年（4位）"
 
-#: prefs.js:290
+#: prefs.js:544
 msgid "Year (2-digit)"
 msgstr "年（2位）"
 
-#: prefs.js:291
+#: prefs.js:545
 msgid "Month (01-12)"
 msgstr "月（01-12）"
 
-#: prefs.js:292
+#: prefs.js:546
 msgid "Day (01-31)"
 msgstr "日（01-31）"
 
-#: prefs.js:293
+#: prefs.js:547
 msgid "Day (1-31)"
 msgstr "日（1-31）"
 
-#: prefs.js:294
+#: prefs.js:548
 msgid "Hour, 24h (00-23)"
 msgstr "时，24小时制（00-23）"
 
-#: prefs.js:295
+#: prefs.js:549
 msgid "Hour, 12h (01-12)"
 msgstr "时，12小时制（01-12）"
 
-#: prefs.js:296
+#: prefs.js:550
 msgid "Minute (00-59)"
 msgstr "分（00-59）"
 
-#: prefs.js:297
+#: prefs.js:551
 msgid "Second (00-59)"
 msgstr "秒（00-59）"
 
-#: prefs.js:298
+#: prefs.js:552
 msgid "AM/PM"
 msgstr "上午/下午"
 
-#: prefs.js:299
+#: prefs.js:553
 msgid "Weekday (full)"
 msgstr "星期（全称）"
 
-#: prefs.js:300
+#: prefs.js:554
 msgid "Weekday (short)"
 msgstr "星期（缩写）"
 
-#: prefs.js:301
+#: prefs.js:555
 msgid "Month name (full)"
 msgstr "月份名称（全称）"
 
-#: prefs.js:302
+#: prefs.js:556
 msgid "Month name (short)"
 msgstr "月份名称（缩写）"
 
-#: prefs.js:303
+#: prefs.js:557
 msgid "Day of year (001-366)"
 msgstr "一年中的第几天（001-366）"
 
-#: prefs.js:304
+#: prefs.js:558
 msgid "Weekday (1-7, Mon=1)"
 msgstr "星期（1-7，周一=1）"
 
-#: prefs.js:305
+#: prefs.js:559
 msgid "Weekday (0-6, Sun=0)"
 msgstr "星期（0-6，周日=0）"
 
-#: prefs.js:306
+#: prefs.js:560
 msgid "ISO week number (01-53)"
 msgstr "ISO 周数（01-53）"
 
-#: prefs.js:307
+#: prefs.js:561
 msgid "Time zone name"
 msgstr "时区名称"
 
-#: prefs.js:308
+#: prefs.js:562
 msgid "Time zone offset (+hhmm)"
 msgstr "时区偏移（+hhmm）"
 
-#: prefs.js:309
+#: prefs.js:563
 msgid "Literal %"
 msgstr "字面量 %"
 
-#: prefs.js:351
+#: prefs.js:605
 msgid "Format Specifiers"
 msgstr "格式符"
 
-#: prefs.js:384
+#: prefs.js:638
 msgid "Clock"
 msgstr "时钟"
 
-#: prefs.js:391
+#: prefs.js:646
 msgid "Configure some display effects of GNOME Shell"
 msgstr "配置 GNOME Shell 的一些显示效果"
 
-#: prefs.js:395
+#: prefs.js:650
 msgid "Homepage"
 msgstr "主页"
 
-#: prefs.js:405
+#: prefs.js:660
 msgid "About"
 msgstr "关于"
 

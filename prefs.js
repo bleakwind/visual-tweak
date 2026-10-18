@@ -1,3 +1,17 @@
+/* vim: set expandtab tabstop=4 softtabstop=4 shiftwidth=4: */
+/**
+ * +-------------------------------------------------------------------------+
+ * | $Id: prefs.js 2026-10-18 10:57:09 Bleakwind Exp $                       |
+ * +-------------------------------------------------------------------------+
+ * | Copyright (c) 2008-2026 Bleakwind(Rick Wu).                             |
+ * +-------------------------------------------------------------------------+
+ * | This source file is prefs.js.                                           |
+ * | This source file is released under BSD license.                         |
+ * +-------------------------------------------------------------------------+
+ * | Author: Bleakwind(Rick Wu) <bleakwind@qq.com>                           |
+ * +-------------------------------------------------------------------------+
+ */
+
 import Adw from 'gi://Adw';
 import Gtk from 'gi://Gtk';
 import Gdk from 'gi://Gdk';
@@ -7,12 +21,17 @@ import GLib from 'gi://GLib';
 import { ExtensionPreferences, gettext as _ } from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
 export default class VisualTweakPreferences extends ExtensionPreferences {
+
+    /**
+     * @brief Fill the preferences window with all settings pages
+     * @param window The Adw.PreferencesWindow to populate
+     */
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
-        window.search_enabled = true;
+        window.search_enabled = false;
         window.set_title(_('Visual Tweak'));
 
-        window.set_default_size(760, 660);
+        window.set_default_size(760, 680);
         window.set_resizable(false);
 
         const cssProvider = new Gtk.CssProvider();
@@ -92,7 +111,20 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
             }
 
         `);
-        Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), cssProvider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION);
+        const display = Gdk.Display.get_default();
+        Gtk.StyleContext.add_provider_for_display(
+            display,
+            cssProvider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        );
+
+        window.connect('destroy', () => {
+            try {
+                Gtk.StyleContext.remove_provider_for_display(display, cssProvider);
+            } catch (e) {
+                // ignore
+            }
+        });
 
         const vbox = new Gtk.Box({
             orientation: Gtk.Orientation.VERTICAL,
@@ -122,16 +154,16 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
             description: _('Control whether the panel beautification is enabled'),
         });
 
-        const enabledRow = new Adw.SwitchRow({
+        const panelGlobalEnableRow = new Adw.SwitchRow({
             title: _('Enable Panel Beautify'),
             subtitle: _('When enabled, the panel applies beautification effects'),
         });
-        settings.bind('panel-enable', enabledRow, 'active', Gio.SettingsBindFlags.DEFAULT);
-        panelGroup.add(enabledRow);
+        settings.bind('panel-global-enable', panelGlobalEnableRow, 'active', Gio.SettingsBindFlags.DEFAULT);
+        panelGroup.add(panelGlobalEnableRow);
 
-        const opacityRow = this._createScaleRow({
+        const panelBackgroundOpacityRow = this._createScaleRow({
             settings,
-            key: 'panel-bgopacity',
+            key: 'panel-background-opacity',
             title: _('Panel Background Opacity'),
             subtitle: _('Opacity of the panel background, 0 = fully transparent, 100 = fully opaque'),
             lower: 0,
@@ -140,54 +172,270 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
             digits: 0,
             suffix: '%',
         });
-        panelGroup.add(opacityRow);
+        panelGroup.add(panelBackgroundOpacityRow);
 
-        const colorEnabledRow = new Adw.SwitchRow({
+        const panelBgcolorEnableRow = new Adw.SwitchRow({
             title: _('Custom Background Color'),
             subtitle: _('When enabled, the panel background uses the color specified below'),
         });
-        settings.bind('panel-bgcolor-enable', colorEnabledRow, 'active', Gio.SettingsBindFlags.DEFAULT);
-        panelGroup.add(colorEnabledRow);
+        settings.bind('panel-bgcolor-enable', panelBgcolorEnableRow, 'active', Gio.SettingsBindFlags.DEFAULT);
+        panelGroup.add(panelBgcolorEnableRow);
 
-        const colorRow = this._createColorRow({
+        const panelBgcolorColorRow = this._createColorRow({
             settings,
             key: 'panel-bgcolor-color',
             title: _('Background Color'),
             subtitle: _('Panel background color in hexadecimal format, e.g. #000000 or #1c1c1c'),
         });
-        panelGroup.add(colorRow);
+        panelGroup.add(panelBgcolorColorRow);
 
-        const syncColorRowSensitivity = () => {
-            colorRow.set_sensitive(settings.get_boolean('panel-bgcolor-enable'));
+        const panelBgcolorEnableBind = () => {
+            panelBgcolorColorRow.set_sensitive(settings.get_boolean('panel-bgcolor-enable'));
         };
-        settings.connect('changed::panel-bgcolor-enable', syncColorRowSensitivity);
-        syncColorRowSensitivity();
+        settings.connect('changed::panel-bgcolor-enable', panelBgcolorEnableBind);
+        panelBgcolorEnableBind();
 
-        const textColorEnabledRow = new Adw.SwitchRow({
+        const panelFgcolorEnableRow = new Adw.SwitchRow({
             title: _('Custom Text Color'),
             subtitle: _('When enabled, the panel text uses the color specified below'),
         });
-        settings.bind('panel-fgcolor-enable', textColorEnabledRow, 'active', Gio.SettingsBindFlags.DEFAULT);
-        panelGroup.add(textColorEnabledRow);
+        settings.bind('panel-fgcolor-enable', panelFgcolorEnableRow, 'active', Gio.SettingsBindFlags.DEFAULT);
+        panelGroup.add(panelFgcolorEnableRow);
 
-        const textColorRow = this._createColorRow({
+        const panelFgcolorColorRow = this._createColorRow({
             settings,
             key: 'panel-fgcolor-color',
             title: _('Text Color'),
             subtitle: _('Panel text color in hexadecimal format, e.g. #ffffff or #ececec'),
         });
-        panelGroup.add(textColorRow);
+        panelGroup.add(panelFgcolorColorRow);
 
-        const syncTextColorRowSensitivity = () => {
-            textColorRow.set_sensitive(settings.get_boolean('panel-fgcolor-enable'));
+        const panelFgcolorEnableBind = () => {
+            panelFgcolorColorRow.set_sensitive(settings.get_boolean('panel-fgcolor-enable'));
         };
-        settings.connect('changed::panel-fgcolor-enable', syncTextColorRowSensitivity);
-        syncTextColorRowSensitivity();
+        settings.connect('changed::panel-fgcolor-enable', panelFgcolorEnableBind);
+        panelFgcolorEnableBind();
 
         panelPage.add(panelGroup);
 
         notebook.append_page(panelPage, new Gtk.Label({ label: _('Panel') }));
         // panel end
+
+        // window begin
+        const windowPage = new Adw.PreferencesPage();
+
+        const windowGroup = new Adw.PreferencesGroup({
+            title: _('Window Effects'),
+            description: _('Control window display effects'),
+        });
+
+        const windowOpenEnableRow = new Adw.SwitchRow({
+            title: _('Enable Window Open Effect'),
+            subtitle: _('When enabled, play animation effect when opening window'),
+        });
+        settings.bind('window-open-enable', windowOpenEnableRow, 'active', Gio.SettingsBindFlags.DEFAULT);
+        windowGroup.add(windowOpenEnableRow);
+
+        const windowOpenTypeRow = new Adw.ActionRow({
+            title: _('Window Open Effect Type'),
+            subtitle: _('Select window open animation effect'),
+        });
+        const windowOpenTypeList = new Gtk.StringList();
+        windowOpenTypeList.append(_('TV Effect'));
+        windowOpenTypeList.append(_('Blinds Effect'));
+        const windowOpenTypeMap = [
+            { value: 'tv', label: _('TV Effect') },
+            { value: 'blinds', label: _('Blinds Effect') },
+        ];
+        const windowOpenTypeDown = new Gtk.DropDown({
+            model: windowOpenTypeList,
+            valign: Gtk.Align.CENTER,
+            width_request: 200,
+        });
+
+        const windowOpenTypeSetting = () => {
+            const curVal = settings.get_string('window-open-type');
+            const idx = windowOpenTypeMap.findIndex(item => item.value === curVal);
+            if (idx >= 0) {
+                windowOpenTypeDown.set_selected(idx);
+            }
+        };
+        windowOpenTypeSetting();
+
+        windowOpenTypeDown.connect('notify::selected', () => {
+            const selIdx = windowOpenTypeDown.get_selected();
+            if (windowOpenTypeMap[selIdx]) {
+                settings.set_string('window-open-type', windowOpenTypeMap[selIdx].value);
+            }
+        });
+
+        settings.connect('changed::window-open-type', windowOpenTypeSetting);
+        windowOpenTypeRow.add_suffix(windowOpenTypeDown);
+        windowOpenTypeRow.activatable_widget = windowOpenTypeDown;
+        windowGroup.add(windowOpenTypeRow);
+
+        const windowOpenEnableBind = () => {
+            windowOpenTypeRow.set_sensitive(settings.get_boolean('window-open-enable'));
+        };
+        settings.connect('changed::window-open-enable', windowOpenEnableBind);
+        windowOpenEnableBind();
+
+        const windowCloseEnableRow = new Adw.SwitchRow({
+            title: _('Enable Window Close Effect'),
+            subtitle: _('When enabled, play animation effect when closing window'),
+        });
+        settings.bind('window-close-enable', windowCloseEnableRow, 'active', Gio.SettingsBindFlags.DEFAULT);
+        windowGroup.add(windowCloseEnableRow);
+
+        const windowCloseTypeRow = new Adw.ActionRow({
+            title: _('Window Close Effect Type'),
+            subtitle: _('Select window close animation effect'),
+        });
+        const windowCloseTypeList = new Gtk.StringList();
+        windowCloseTypeList.append(_('TV Effect'));
+        windowCloseTypeList.append(_('Blinds Effect'));
+        const windowCloseTypeMap = [
+            { value: 'tv', label: _('TV Effect') },
+            { value: 'blinds', label: _('Blinds Effect') },
+        ];
+        const windowCloseTypeDown = new Gtk.DropDown({
+            model: windowCloseTypeList,
+            valign: Gtk.Align.CENTER,
+            width_request: 200,
+        });
+
+        const windowCloseTypeSetting = () => {
+            const curVal = settings.get_string('window-close-type');
+            const idx = windowCloseTypeMap.findIndex(item => item.value === curVal);
+            if (idx >= 0) {
+                windowCloseTypeDown.set_selected(idx);
+            }
+        };
+        windowCloseTypeSetting();
+
+        windowCloseTypeDown.connect('notify::selected', ()=>{
+            const selIdx = windowCloseTypeDown.get_selected();
+            if (windowCloseTypeMap[selIdx]){
+                settings.set_string('window-close-type', windowCloseTypeMap[selIdx].value);
+            }
+        });
+
+        settings.connect('changed::window-close-type', windowCloseTypeSetting);
+        windowCloseTypeRow.add_suffix(windowCloseTypeDown);
+        windowCloseTypeRow.activatable_widget = windowCloseTypeDown;
+        windowGroup.add(windowCloseTypeRow);
+
+        const windowCloseEnableBind = () => {
+            windowCloseTypeRow.set_sensitive(settings.get_boolean('window-close-enable'));
+        };
+        settings.connect('changed::window-close-enable', windowCloseEnableBind);
+        windowCloseEnableBind();
+
+        const windowMinimizeEnableRow = new Adw.SwitchRow({
+            title: _('Enable Window Minimize Effect'),
+            subtitle: _('When enabled, play animation effect when minimizing window'),
+        });
+        settings.bind('window-minimize-enable', windowMinimizeEnableRow, 'active', Gio.SettingsBindFlags.DEFAULT);
+        windowGroup.add(windowMinimizeEnableRow);
+
+        const windowMinimizeTypeRow = new Adw.ActionRow({
+            title: _('Window Minimize Effect Type'),
+            subtitle: _('Select window minimize animation effect'),
+        });
+        const windowMinimizeTypeList = new Gtk.StringList();
+        windowMinimizeTypeList.append(_('Genie Effect'));
+        windowMinimizeTypeList.append(_('Scale Effect'));
+        const windowMinimizeTypeMap = [
+            { value: 'genie', label: _('Genie Effect') },
+            { value: 'scale', label: _('Scale Effect') },
+        ];
+        const windowMinimizeTypeDown = new Gtk.DropDown({
+            model: windowMinimizeTypeList,
+            valign: Gtk.Align.CENTER,
+            width_request: 200,
+        });
+
+        const windowMinimizeTypeSetting = () => {
+            const curVal = settings.get_string('window-minimize-type');
+            const idx = windowMinimizeTypeMap.findIndex(item => item.value === curVal);
+            if (idx >= 0) {
+                windowMinimizeTypeDown.set_selected(idx);
+            }
+        };
+        windowMinimizeTypeSetting();
+
+        windowMinimizeTypeDown.connect('notify::selected', () => {
+            const selIdx = windowMinimizeTypeDown.get_selected();
+            if (windowMinimizeTypeMap[selIdx]) {
+                settings.set_string('window-minimize-type', windowMinimizeTypeMap[selIdx].value);
+            }
+        });
+
+        settings.connect('changed::window-minimize-type', windowMinimizeTypeSetting);
+        windowMinimizeTypeRow.add_suffix(windowMinimizeTypeDown);
+        windowMinimizeTypeRow.activatable_widget = windowMinimizeTypeDown;
+        windowGroup.add(windowMinimizeTypeRow);
+
+        const windowMinimizeEnableBind = () => {
+            windowMinimizeTypeRow.set_sensitive(settings.get_boolean('window-minimize-enable'));
+        };
+        settings.connect('changed::window-minimize-enable', windowMinimizeEnableBind);
+        windowMinimizeEnableBind();
+
+        const windowUnminimizeEnableRow = new Adw.SwitchRow({
+            title: _('Enable Window Unminimize Effect'),
+            subtitle: _('When enabled, play animation effect when restoring window'),
+        });
+        settings.bind('window-unminimize-enable', windowUnminimizeEnableRow, 'active', Gio.SettingsBindFlags.DEFAULT);
+        windowGroup.add(windowUnminimizeEnableRow);
+
+        const windowUnminimizeTypeRow = new Adw.ActionRow({
+            title: _('Window Unminimize Effect Type'),
+            subtitle: _('Select window unminimize animation effect'),
+        });
+        const windowUnminimizeTypeList = new Gtk.StringList();
+        windowUnminimizeTypeList.append(_('Genie Effect'));
+        windowUnminimizeTypeList.append(_('Scale Effect'));
+        const windowUnminimizeTypeMap = [
+            { value: 'genie', label: _('Genie Effect') },
+            { value: 'scale', label: _('Scale Effect') },
+        ];
+        const windowUnminimizeTypeDown = new Gtk.DropDown({
+            model: windowUnminimizeTypeList,
+            valign: Gtk.Align.CENTER,
+            width_request: 200,
+        });
+
+        const windowUnminimizeTypeSetting = () => {
+            const curVal = settings.get_string('window-unminimize-type');
+            const idx = windowUnminimizeTypeMap.findIndex(item => item.value === curVal);
+            if (idx >= 0) {
+                windowUnminimizeTypeDown.set_selected(idx);
+            }
+        };
+        windowUnminimizeTypeSetting();
+
+        windowUnminimizeTypeDown.connect('notify::selected', () => {
+            const selIdx = windowUnminimizeTypeDown.get_selected();
+            if (windowUnminimizeTypeMap[selIdx]) {
+                settings.set_string('window-unminimize-type', windowUnminimizeTypeMap[selIdx].value);
+            }
+        });
+
+        settings.connect('changed::window-unminimize-type', windowUnminimizeTypeSetting);
+        windowUnminimizeTypeRow.add_suffix(windowUnminimizeTypeDown);
+        windowUnminimizeTypeRow.activatable_widget = windowUnminimizeTypeDown;
+        windowGroup.add(windowUnminimizeTypeRow);
+
+        const windowUnminimizeEnableBind = () => {
+            windowUnminimizeTypeRow.set_sensitive(settings.get_boolean('window-unminimize-enable'));
+        };
+        settings.connect('changed::window-unminimize-enable', windowUnminimizeEnableBind);
+        windowUnminimizeEnableBind();
+
+        windowPage.add(windowGroup);
+        notebook.append_page(windowPage, new Gtk.Label({ label: _('Window') }));
+        // window end
 
         // clock begin
         const clockPage = new Adw.PreferencesPage();
@@ -197,95 +445,101 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
             description: _('Customize the format of the panel clock'),
         });
 
-        const clockEnableRow = new Adw.SwitchRow({
+        const clockFormatEnableRow = new Adw.SwitchRow({
             title: _('Enable Clock Format'),
             subtitle: _('When enabled, the panel clock uses the custom format specified'),
         });
-        settings.bind('clock-enable', clockEnableRow, 'active', Gio.SettingsBindFlags.DEFAULT);
-        clockGroup.add(clockEnableRow);
+        settings.bind('clock-format-enable', clockFormatEnableRow, 'active', Gio.SettingsBindFlags.DEFAULT);
+        clockGroup.add(clockFormatEnableRow);
 
-        const clockFormatRow = new Adw.ActionRow({
+        const clockFormatStringRow = new Adw.ActionRow({
             title: _('Clock Format'),
-            subtitle: _('Custom clock format using strftime-style specifiers, e.g. %Y-%m-%d %H:%M:%S or %H:%M'),
+            subtitle: _('Custom clock format using strftime-style specifiers, e.g. %Y-%m-%d %H:%M or %H:%M:%S'),
         });
 
-        const clockFormatLabel = new Gtk.Label({
-            label: settings.get_string('clock-format'),
+        const clockFormatStringLabel = new Gtk.Label({
+            label: settings.get_string('clock-format-string'),
             valign: Gtk.Align.CENTER,
             xalign: 1,
             css_classes: ['dim-label'],
         });
 
-        const clockFormatEntry = new Gtk.Entry({
-            text: settings.get_string('clock-format'),
+        const clockFormatStringEntry = new Gtk.Entry({
+            text: settings.get_string('clock-format-string'),
             valign: Gtk.Align.CENTER,
             width_request: 220,
             visible: false,
         });
 
-        const clockFormatButton = new Gtk.Button({
+        const clockFormatStringButton = new Gtk.Button({
             icon_name: 'document-edit-symbolic',
             valign: Gtk.Align.CENTER,
             tooltip_text: _('Edit'),
             css_classes: ['flat'],
         });
 
-        let clockFormatEditing = false;
+        let clockFormatStringEditing = false;
 
-        const enterClockEditMode = () => {
-            clockFormatEditing = true;
-            clockFormatEntry.text = settings.get_string('clock-format');
-            clockFormatLabel.visible = false;
-            clockFormatEntry.visible = true;
-            clockFormatButton.icon_name = 'object-select-symbolic';
-            clockFormatButton.tooltip_text = _('Apply');
-            clockFormatEntry.grab_focus();
-            clockFormatEntry.set_position(-1);
+        const clockFormatStringInto = () => {
+            clockFormatStringEditing = true;
+            clockFormatStringEntry.text = settings.get_string('clock-format-string');
+            clockFormatStringLabel.visible = false;
+            clockFormatStringEntry.visible = true;
+            clockFormatStringButton.icon_name = 'object-select-symbolic';
+            clockFormatStringButton.tooltip_text = _('Apply');
+            clockFormatStringEntry.grab_focus();
+            clockFormatStringEntry.set_position(-1);
         };
 
-        const exitClockEditMode = (commit) => {
-            clockFormatEditing = false;
+        const clockFormatStringExit = (commit) => {
+            clockFormatStringEditing = false;
             if (commit) {
-                const value = clockFormatEntry.text;
-                if (value !== settings.get_string('clock-format')) {
-                    settings.set_string('clock-format', value);
+                const value = clockFormatStringEntry.text;
+                if (value !== settings.get_string('clock-format-string')) {
+                    settings.set_string('clock-format-string', value);
                 }
             }
-            clockFormatLabel.label = settings.get_string('clock-format');
-            clockFormatEntry.visible = false;
-            clockFormatLabel.visible = true;
-            clockFormatButton.icon_name = 'document-edit-symbolic';
-            clockFormatButton.tooltip_text = _('Edit');
+            clockFormatStringLabel.label = settings.get_string('clock-format-string');
+            clockFormatStringEntry.visible = false;
+            clockFormatStringLabel.visible = true;
+            clockFormatStringButton.icon_name = 'document-edit-symbolic';
+            clockFormatStringButton.tooltip_text = _('Edit');
         };
 
-        clockFormatButton.connect('clicked', () => {
-            if (!clockFormatEditing) {
-                enterClockEditMode();
+        clockFormatStringButton.connect('clicked', () => {
+            if (!clockFormatStringEditing) {
+                clockFormatStringInto();
             } else {
-                exitClockEditMode(true);
+                clockFormatStringExit(true);
             }
         });
 
-        settings.connect('changed::clock-format', () => {
-            const v = settings.get_string('clock-format');
-            clockFormatLabel.label = v;
-            if (!clockFormatEditing && clockFormatEntry.text !== v) {
-                clockFormatEntry.text = v;
+        clockFormatStringEntry.connect('activate', () => {
+            if (clockFormatStringEditing) {
+                clockFormatStringExit(true);
             }
         });
 
-        clockFormatRow.add_suffix(clockFormatLabel);
-        clockFormatRow.add_suffix(clockFormatEntry);
-        clockFormatRow.add_suffix(clockFormatButton);
-        clockGroup.add(clockFormatRow);
+        settings.connect('changed::clock-format-string', () => {
+            const v = settings.get_string('clock-format-string');
+            clockFormatStringLabel.label = v;
+            if (!clockFormatStringEditing && clockFormatStringEntry.text !== v) {
+                clockFormatStringEntry.text = v;
+            }
+        });
 
-        const syncClockSensitivity = () => {
-            clockFormatRow.set_sensitive(settings.get_boolean('clock-enable'));
+        clockFormatStringRow.add_suffix(clockFormatStringLabel);
+        clockFormatStringRow.add_suffix(clockFormatStringEntry);
+        clockFormatStringRow.add_suffix(clockFormatStringButton);
+        clockGroup.add(clockFormatStringRow);
+
+        const clockFormatEnableBind = () => {
+            clockFormatStringRow.set_sensitive(settings.get_boolean('clock-format-enable'));
         };
-        settings.connect('changed::clock-enable', syncClockSensitivity);
-        syncClockSensitivity();
+        settings.connect('changed::clock-format-enable', clockFormatEnableBind);
+        clockFormatEnableBind();
 
-        const formatSpecifiers = [
+        const clockFormatSpecifiersString = [
             ['%Y', _('Year (4-digit)')],
             ['%y', _('Year (2-digit)')],
             ['%m', _('Month (01-12)')],
@@ -309,7 +563,7 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
             ['%%', _('Literal %')],
         ];
 
-        const specGrid = new Gtk.Grid({
+        const clockFormatSpecifiersGrid = new Gtk.Grid({
             column_spacing: 24,
             row_spacing: 6,
             margin_top: 6,
@@ -319,8 +573,8 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
             hexpand: true,
         });
 
-        for (let i = 0; i < formatSpecifiers.length; i++) {
-            const [code, desc] = formatSpecifiers[i];
+        for (let i = 0; i < clockFormatSpecifiersString.length; i++) {
+            const [code, desc] = clockFormatSpecifiersString[i];
             const col = i % 2;
             const row = Math.floor(i / 2);
 
@@ -337,12 +591,12 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
                 hexpand: true,
             });
 
-            specGrid.attach(codeLabel, col * 2,     row, 1, 1);
-            specGrid.attach(descLabel, col * 2 + 1, row, 1, 1);
+            clockFormatSpecifiersGrid.attach(codeLabel, col * 2,     row, 1, 1);
+            clockFormatSpecifiersGrid.attach(descLabel, col * 2 + 1, row, 1, 1);
         }
 
         const specInnerFrame = new Gtk.Frame({
-            child: specGrid,
+            child: clockFormatSpecifiersGrid,
             hexpand: true,
             css_classes: ['visual-tweak-frame'],
         });
@@ -386,20 +640,21 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
 
         // about begin
         const aboutPage = new Adw.PreferencesPage();
+
         const aboutGroup = new Adw.PreferencesGroup({
             title: _('Visual Tweak'),
             description: _('Configure some display effects of GNOME Shell'),
         });
 
-        const homepageRow = new Adw.ActionRow({
+        const aboutWebsiteUrlRow = new Adw.ActionRow({
             title: _('Homepage'),
             subtitle: 'github.com/bleakwind/visual-tweak',
             activatable: true,
         });
-        homepageRow.connect('activated', () => {
+        aboutWebsiteUrlRow.connect('activated', () => {
             Gtk.show_uri(null, 'https://github.com/bleakwind/visual-tweak', Gdk.CURRENT_TIME);
         });
-        aboutGroup.add(homepageRow);
+        aboutGroup.add(aboutWebsiteUrlRow);
 
         aboutPage.add(aboutGroup);
         notebook.append_page(aboutPage, new Gtk.Label({ label: _('About') }));
@@ -416,11 +671,26 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
         window.set_content(vbox);
     }
 
+    /**
+     * @brief Create an Adw.ActionRow with a Gtk.Scale bound to a numeric setting
+     * @param options.settings GSettings instance
+     * @param options.key Settings key
+     * @param options.title Row title
+     * @param options.subtitle Row subtitle
+     * @param options.lower Minimum value
+     * @param options.upper Maximum value
+     * @param options.step Scale step increment
+     * @param options.digits Display digits
+     * @param options.suffix Value suffix such as '%'
+     * @param options.mapTo Optional value converter from setting value to UI value
+     * @param options.mapFrom Optional value converter from UI value to setting value
+     * @return The created Adw.ActionRow
+     */
     _createScaleRow({
         settings, key, title, subtitle,
         lower, upper, step, digits, suffix,
         mapTo = v => v,
-        mapFrom = v => v,
+        mapFrom = v => Math.round(v),
     }) {
         const row = new Adw.ActionRow({ title, subtitle });
 
@@ -475,6 +745,14 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
         return row;
     }
 
+    /**
+     * @brief Create an Adw.ActionRow with a Gtk.ColorButton bound to a color setting
+     * @param options.settings GSettings instance
+     * @param options.key Settings key
+     * @param options.title Row title
+     * @param options.subtitle Row subtitle
+     * @return The created Adw.ActionRow
+     */
     _createColorRow({ settings, key, title, subtitle }) {
         const row = new Adw.ActionRow({ title, subtitle });
 
@@ -506,9 +784,17 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
         return row;
     }
 
+    /**
+     * @brief Convert a Gdk.RGBA color to a #rrggbb hex string
+     * @param rgba The Gdk.RGBA color
+     * @return Hex color string with a leading #
+     */
     _rgbaToHex(rgba) {
-        const toByte = (v) =>
-            Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, '0');
+        const toByte = (v) => {
+            return Math.round(Math.max(0, Math.min(1, v)) * 255)
+                .toString(16)
+                .padStart(2, '0');
+        };
         return `#${toByte(rgba.red)}${toByte(rgba.green)}${toByte(rgba.blue)}`;
     }
 }

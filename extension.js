@@ -1,7 +1,7 @@
 /* vim: set expandtab tabstop=4 softtabstop=4 shiftwidth=4: */
 /**
  * +-------------------------------------------------------------------------+
- * | $Id: extension.js 2026-10-18 05:29:31 Bleakwind Exp $                   |
+ * | $Id: extension.js 2026-10-20 12:18:50 Bleakwind Exp $                   |
  * +-------------------------------------------------------------------------+
  * | Copyright (c) 2008-2026 Bleakwind(Rick Wu).                             |
  * +-------------------------------------------------------------------------+
@@ -27,6 +27,7 @@ export default class VisualTweakExtension extends Extension {
      */
     enable() {
         this._settings = this.getSettings();
+        this._idleSourceIds = new Set();
 
         this._modules = [
             new ModulePanel(this._settings, Main.panel),
@@ -43,11 +44,29 @@ export default class VisualTweakExtension extends Extension {
         });
 
         this._overviewHiddenId = Main.overview.connect('hidden', () => {
-            GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+            this._addIdle(() => {
                 this._onOverviewHidden();
-                return GLib.SOURCE_REMOVE;
             });
         });
+    }
+
+    /**
+     * @brief Add a GLib idle source and track its id for removal in disable()
+     * @param callback Function to run when the idle source fires
+     */
+    _addIdle(callback) {
+        if (!this._idleSourceIds) {
+            return;
+        }
+        const id = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+            this._idleSourceIds?.delete(id);
+            if (!this._idleSourceIds) {
+                return GLib.SOURCE_REMOVE;
+            }
+            callback();
+            return GLib.SOURCE_REMOVE;
+        });
+        this._idleSourceIds.add(id);
     }
 
     /**
@@ -86,6 +105,14 @@ export default class VisualTweakExtension extends Extension {
             this._overviewHiddenId = null;
         }
 
+        if (this._idleSourceIds) {
+            for (const id of this._idleSourceIds) {
+                GLib.Source.remove(id);
+            }
+            this._idleSourceIds.clear();
+            this._idleSourceIds = null;
+        }
+
         for (const module of this._modules) {
             module.disable();
         }
@@ -94,4 +121,3 @@ export default class VisualTweakExtension extends Extension {
         this._settings = null;
     }
 }
-

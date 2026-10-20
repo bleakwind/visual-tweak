@@ -1,7 +1,7 @@
 /* vim: set expandtab tabstop=4 softtabstop=4 shiftwidth=4: */
 /**
  * +-------------------------------------------------------------------------+
- * | $Id: module_panel.js 2026-10-18 03:05:01 Bleakwind Exp $                |
+ * | $Id: module_panel.js 2026-10-20 12:19:01 Bleakwind Exp $                |
  * +-------------------------------------------------------------------------+
  * | Copyright (c) 2008-2026 Bleakwind(Rick Wu).                             |
  * +-------------------------------------------------------------------------+
@@ -29,6 +29,7 @@ export class ModulePanel {
 
         this._childAddedIds = new Map();
         this._settingsChangedId = null;
+        this._idleSourceIds = new Set();
     }
 
     /**
@@ -41,6 +42,25 @@ export class ModulePanel {
 
         this.apply();
         this._connectChild(this._panel);
+    }
+
+    /**
+     * @brief Add a GLib idle source and track its id for removal in disable()
+     * @param callback Function to run when the idle source fires
+     */
+    _addIdle(callback) {
+        if (!this._idleSourceIds) {
+            return;
+        }
+        const id = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+            this._idleSourceIds?.delete(id);
+            if (!this._idleSourceIds) {
+                return GLib.SOURCE_REMOVE;
+            }
+            callback();
+            return GLib.SOURCE_REMOVE;
+        });
+        this._idleSourceIds.add(id);
     }
 
     /**
@@ -223,9 +243,8 @@ export class ModulePanel {
         }
 
         const id = actor.connect('child-added', () => {
-            GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+            this._addIdle(() => {
                 this.apply();
-                return GLib.SOURCE_REMOVE;
             });
         });
         this._childAddedIds.set(actor, id);
@@ -281,6 +300,14 @@ export class ModulePanel {
             this._settingsChangedId = null;
         }
 
+        if (this._idleSourceIds) {
+            for (const id of this._idleSourceIds) {
+                GLib.Source.remove(id);
+            }
+            this._idleSourceIds.clear();
+            this._idleSourceIds = null;
+        }
+
         this._disconnChild();
         this._clear();
 
@@ -288,4 +315,3 @@ export class ModulePanel {
         this._panel = null;
     }
 }
-

@@ -1,7 +1,7 @@
 /* vim: set expandtab tabstop=4 softtabstop=4 shiftwidth=4: */
 /**
  * +-------------------------------------------------------------------------+
- * | $Id: prefs.js 2026-10-18 10:57:09 Bleakwind Exp $                       |
+ * | $Id: prefs.js 2026-10-20 12:19:07 Bleakwind Exp $                       |
  * +-------------------------------------------------------------------------+
  * | Copyright (c) 2008-2026 Bleakwind(Rick Wu).                             |
  * +-------------------------------------------------------------------------+
@@ -798,4 +798,3 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
         return `#${toByte(rgba.red)}${toByte(rgba.green)}${toByte(rgba.blue)}`;
     }
 }
-

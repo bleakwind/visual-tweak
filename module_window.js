@@ -1,7 +1,7 @@
 /* vim: set expandtab tabstop=4 softtabstop=4 shiftwidth=4: */
 /**
  * +-------------------------------------------------------------------------+
- * | $Id: module_window.js 2026-10-18 10:49:55 Bleakwind Exp $               |
+ * | $Id: module_window.js 2026-10-20 12:30:10 Bleakwind Exp $               |
  * +-------------------------------------------------------------------------+
  * | Copyright (c) 2008-2026 Bleakwind(Rick Wu).                             |
  * +-------------------------------------------------------------------------+
@@ -2409,4 +2409,3 @@ const WindowUnminimizeScale = GObject.registerClass(
         }
     }
 );
-

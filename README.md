@@ -57,4 +57,3 @@ Open gnome-extensions-app, and press visual-tweak to configure.
 
 ## License
 BSD 2-Clause - See LICENSE file
-

@@ -1,7 +1,7 @@
 /* vim: set expandtab tabstop=4 softtabstop=4 shiftwidth=4: */
 /**
  * +-------------------------------------------------------------------------+
- * | $Id: extension.js 2026-10-20 12:18:50 Bleakwind Exp $                   |
+ * | $Id: extension.js 2026-10-27 17:08:01 Bleakwind Exp $                   |
  * +-------------------------------------------------------------------------+
  * | Copyright (c) 2008-2026 Bleakwind(Rick Wu).                             |
  * +-------------------------------------------------------------------------+
@@ -18,12 +18,13 @@ import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 
 import { ModulePanel } from './module_panel.js';
 import { ModuleWindow } from './module_window.js';
+import { ModuleDock } from './module_dock.js';
 import { ModuleClock } from './module_clock.js';
 
 export default class VisualTweakExtension extends Extension {
 
     /**
-     * @brief Extension entry point, initialize modules and connect overview signals
+     * @brief Enable the extension: create modules and connect overview signals
      */
     enable() {
         this._settings = this.getSettings();
@@ -32,12 +33,27 @@ export default class VisualTweakExtension extends Extension {
         this._modules = [
             new ModulePanel(this._settings, Main.panel),
             new ModuleWindow(this._settings),
+            new ModuleDock(this._settings),
             new ModuleClock(this._settings),
         ];
 
         for (const module of this._modules) {
             module.enable();
         }
+
+        this._dashOriginalOpacity = null;
+        this._dashOriginalReactive = null;
+        this._dashDimmed = false;
+
+        this._applyDashDim();
+
+        this._dockShowEnableChangedId = this._settings.connect('changed::dock-show-enable', () => {
+            if (this._settings.get_boolean('dock-show-enable')) {
+                this._applyDashDim();
+            } else {
+                this._restoreDash();
+            }
+        });
 
         this._overviewShowingId = Main.overview.connect('showing', () => {
             this._onOverviewShowing();
@@ -48,6 +64,54 @@ export default class VisualTweakExtension extends Extension {
                 this._onOverviewHidden();
             });
         });
+    }
+
+    /**
+     * @brief Dim the overview dash when the dock is enabled
+     */
+    _applyDashDim() {
+        if (!this._settings || !this._settings.get_boolean('dock-show-enable')) {
+            return;
+        }
+        if (this._dashDimmed) {
+            return;
+        }
+        try {
+            if (Main.overview && Main.overview.dash) {
+                const dash = Main.overview.dash;
+                this._dashOriginalOpacity = dash.opacity;
+                this._dashOriginalReactive = dash.reactive;
+                dash.opacity = 0;
+                dash.reactive = false;
+                this._dashDimmed = true;
+            }
+        } catch (e) {
+            logError(e, 'VisualTweak: dim overview dash failed');
+        }
+    }
+
+    /**
+     * @brief Restore the original overview dash opacity and reactive state
+     */
+    _restoreDash() {
+        if (!this._dashDimmed) {
+            return;
+        }
+        try {
+            if (Main.overview && Main.overview.dash) {
+                if (this._dashOriginalOpacity !== null) {
+                    Main.overview.dash.opacity = this._dashOriginalOpacity;
+                }
+                if (this._dashOriginalReactive !== null) {
+                    Main.overview.dash.reactive = this._dashOriginalReactive;
+                }
+            }
+        } catch (e) {
+            logError(e, 'VisualTweak: restore overview dash failed');
+        }
+        this._dashDimmed = false;
+        this._dashOriginalOpacity = null;
+        this._dashOriginalReactive = null;
     }
 
     /**
@@ -70,9 +134,16 @@ export default class VisualTweakExtension extends Extension {
     }
 
     /**
-     * @brief Notify all modules that the overview is showing
+     * @brief Called when the overview is showing
      */
     _onOverviewShowing() {
+        if (this._dashDimmed && Main.overview && Main.overview.dash) {
+            try {
+                Main.overview.dash.opacity = 0;
+                Main.overview.dash.reactive = false;
+            } catch (e) {}
+        }
+
         for (const module of this._modules) {
             if (typeof module.onOverviewShowing === 'function') {
                 module.onOverviewShowing();
@@ -81,7 +152,7 @@ export default class VisualTweakExtension extends Extension {
     }
 
     /**
-     * @brief Notify all modules that the overview has hidden
+     * @brief Called when the overview is hidden
      */
     _onOverviewHidden() {
         for (const module of this._modules) {
@@ -92,9 +163,14 @@ export default class VisualTweakExtension extends Extension {
     }
 
     /**
-     * @brief Extension cleanup, disconnect overview signals and disable modules
+     * @brief Disable the extension and release all resources
      */
     disable() {
+        if (this._dockShowEnableChangedId) {
+            this._settings.disconnect(this._dockShowEnableChangedId);
+            this._dockShowEnableChangedId = null;
+        }
+
         if (this._overviewShowingId) {
             Main.overview.disconnect(this._overviewShowingId);
             this._overviewShowingId = null;
@@ -118,6 +194,9 @@ export default class VisualTweakExtension extends Extension {
         }
 
         this._modules = null;
+
+        this._restoreDash();
+
         this._settings = null;
     }
 }

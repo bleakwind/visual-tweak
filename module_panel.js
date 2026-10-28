@@ -1,7 +1,7 @@
 /* vim: set expandtab tabstop=4 softtabstop=4 shiftwidth=4: */
 /**
  * +-------------------------------------------------------------------------+
- * | $Id: module_panel.js 2026-10-20 12:19:01 Bleakwind Exp $                |
+ * | $Id: module_panel.js 2026-10-26 15:21:52 Bleakwind Exp $                |
  * +-------------------------------------------------------------------------+
  * | Copyright (c) 2008-2026 Bleakwind(Rick Wu).                             |
  * +-------------------------------------------------------------------------+
@@ -266,7 +266,7 @@ export class ModulePanel {
             try {
                 actor.disconnect(id);
             } catch (e) {
-                logError(e, 'VisualTweak: disconnect child‑added signal');
+                logError(e, 'VisualTweak: disconnect child-added signal');
             }
         }
         this._childAddedIds.clear();

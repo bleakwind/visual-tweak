@@ -88,6 +88,32 @@
       <description>Select window unminimize animation effect</description>
     </key>
 
+    <key name="dock-show-enable" type="b">
+      <default>true</default>
+      <summary>Enable Dock</summary>
+      <description>When enabled, show a dock at the bottom of the screen that appears when the pointer touches the bottom edge</description>
+    </key>
+
+    <key name="dock-icon-size" type="i">
+      <default>48</default>
+      <range min="16" max="128" />
+      <summary>Dock Icon Size</summary>
+      <description>Size of the dock icons in pixels</description>
+    </key>
+
+    <key name="dock-background-color" type="s">
+      <default>'#000000'</default>
+      <summary>Dock Background Color</summary>
+      <description>Dock background color in hexadecimal format, e.g. #000000 or #1c1c1c</description>
+    </key>
+
+    <key name="dock-background-opacity" type="i">
+      <default>50</default>
+      <range min="0" max="100" />
+      <summary>Dock Background Opacity</summary>
+      <description>Opacity of the dock background, 0 = fully transparent, 100 = fully opaque</description>
+    </key>
+
     <key name="clock-format-enable" type="b">
       <default>true</default>
       <summary>Enable Clock Format</summary>

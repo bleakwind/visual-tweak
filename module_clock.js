@@ -1,7 +1,7 @@
 /* vim: set expandtab tabstop=4 softtabstop=4 shiftwidth=4: */
 /**
  * +-------------------------------------------------------------------------+
- * | $Id: module_clock.js 2026-10-20 12:18:57 Bleakwind Exp $                |
+ * | $Id: module_clock.js 2026-10-26 15:21:32 Bleakwind Exp $                |
  * +-------------------------------------------------------------------------+
  * | Copyright (c) 2008-2026 Bleakwind(Rick Wu).                             |
  * +-------------------------------------------------------------------------+
@@ -51,17 +51,15 @@ export class ModuleClock {
     }
 
     /**
-     * @brief Called when overview is showing, currently a no-op
+     * @brief Called when overview is showing
      */
     onOverviewShowing() {
-        // none
     }
 
     /**
-     * @brief Called when overview is hidden, currently a no-op
+     * @brief Called when overview is hidden
      */
     onOverviewHidden() {
-        // none
     }
 
     /**

@@ -1,7 +1,7 @@
 /* vim: set expandtab tabstop=4 softtabstop=4 shiftwidth=4: */
 /**
  * +-------------------------------------------------------------------------+
- * | $Id: prefs.js 2026-10-20 12:19:07 Bleakwind Exp $                       |
+ * | $Id: prefs.js 2026-10-27 10:14:15 Bleakwind Exp $                       |
  * +-------------------------------------------------------------------------+
  * | Copyright (c) 2008-2026 Bleakwind(Rick Wu).                             |
  * +-------------------------------------------------------------------------+
@@ -23,8 +23,8 @@ import { ExtensionPreferences, gettext as _ } from 'resource:///org/gnome/Shell/
 export default class VisualTweakPreferences extends ExtensionPreferences {
 
     /**
-     * @brief Fill the preferences window with all settings pages
-     * @param window The Adw.PreferencesWindow to populate
+     * @brief Build the preferences window content
+     * @param window The Adw.PreferencesWindow to fill
      */
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
@@ -36,80 +36,17 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
 
         const cssProvider = new Gtk.CssProvider();
         cssProvider.load_from_string(`
-
-            .visual-tweak-headerbar {
-                border: none;
-                box-shadow: none;
-            }
-
-            .visual-tweak-notebook {
-                border: none;
-                box-shadow: none;
-                margin: 20px;
-                background-color: @view_bg_color;
-            }
-
-            .visual-tweak-notebook > header {
-                border: none;
-                border-bottom: 1px solid @borders;
-                box-shadow: none;
-                margin: 0px;
-            }
-
-            .visual-tweak-notebook > header > tabs {
-                border: none;
-                box-shadow: none;
-                margin: 0px 0px -1px 0px;
-            }
-
-            .visual-tweak-notebook > header > tabs > tab {
-                border: none;
-                border-top: 3px solid transparent;
-                border-bottom: 3px solid transparent;
-                box-shadow: none;
-                padding: 0px 12px;
-                margin: 0px 6px;
-            }
-
-            .visual-tweak-notebook > header > tabs > tab > label {
-                vertical-align: middle;
-                margin: 0px;
-                padding: 0px;
-                min-height: 0px;
-            }
-
-            .visual-tweak-notebook > header > tabs > tab:checked {
-                border: none;
-                border-top: 3px solid transparent;
-                border-bottom: 3px solid @accent_color;
-                box-shadow: none;
-            }
-
-            .visual-tweak-notebook > header > tabs > tab:hover {
-                border: none;
-                border-top: 3px solid transparent;
-                border-bottom: 3px solid @borders;
-                box-shadow: none;
-            }
-
-            .visual-tweak-notebook > header > tabs > tab:checked:hover {
-                border: none;
-                border-top: 3px solid transparent;
-                border-bottom: 3px solid @accent_color;
-                box-shadow: none;
-            }
-
-            .visual-tweak-notebook > stack {
-                border: none;
-                box-shadow: none;
-                margin: 0px;
-            }
-
-            .visual-tweak-frame {
-                border: none;
-                box-shadow: none;
-            }
-
+            .visual-tweak-headerbar { border: none; box-shadow: none; }
+            .visual-tweak-notebook { border: none; box-shadow: none; margin: 20px; background-color: @view_bg_color; }
+            .visual-tweak-notebook > header { border: none; border-bottom: 1px solid @borders; box-shadow: none; margin: 0px; }
+            .visual-tweak-notebook > header > tabs { border: none; box-shadow: none; margin: 0px 0px -1px 0px; }
+            .visual-tweak-notebook > header > tabs > tab { border: none; border-top: 3px solid transparent; border-bottom: 3px solid transparent; box-shadow: none; padding: 0px 12px; margin: 0px 6px; }
+            .visual-tweak-notebook > header > tabs > tab > label { vertical-align: middle; margin: 0px; padding: 0px; min-height: 0px; }
+            .visual-tweak-notebook > header > tabs > tab:checked { border: none; border-top: 3px solid transparent; border-bottom: 3px solid @accent_color; box-shadow: none; }
+            .visual-tweak-notebook > header > tabs > tab:hover { border: none; border-top: 3px solid transparent; border-bottom: 3px solid @borders; box-shadow: none; }
+            .visual-tweak-notebook > header > tabs > tab:checked:hover { border: none; border-top: 3px solid transparent; border-bottom: 3px solid @accent_color; box-shadow: none; }
+            .visual-tweak-notebook > stack { border: none; box-shadow: none; margin: 0px; }
+            .visual-tweak-frame { border: none; box-shadow: none; }
         `);
         const display = Gdk.Display.get_default();
         Gtk.StyleContext.add_provider_for_display(
@@ -121,9 +58,7 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
         window.connect('destroy', () => {
             try {
                 Gtk.StyleContext.remove_provider_for_display(display, cssProvider);
-            } catch (e) {
-                // ignore
-            }
+            } catch (e) {}
         });
 
         const vbox = new Gtk.Box({
@@ -148,7 +83,6 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
 
         // panel begin
         const panelPage = new Adw.PreferencesPage();
-
         const panelGroup = new Adw.PreferencesGroup({
             title: _('Panel Beautify'),
             description: _('Control whether the panel beautification is enabled'),
@@ -166,11 +100,7 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
             key: 'panel-background-opacity',
             title: _('Panel Background Opacity'),
             subtitle: _('Opacity of the panel background, 0 = fully transparent, 100 = fully opaque'),
-            lower: 0,
-            upper: 100,
-            step: 1,
-            digits: 0,
-            suffix: '%',
+            lower: 0, upper: 100, step: 1, digits: 0, suffix: '%',
         });
         panelGroup.add(panelBackgroundOpacityRow);
 
@@ -217,13 +147,11 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
         panelFgcolorEnableBind();
 
         panelPage.add(panelGroup);
-
         notebook.append_page(panelPage, new Gtk.Label({ label: _('Panel') }));
         // panel end
 
         // window begin
         const windowPage = new Adw.PreferencesPage();
-
         const windowGroup = new Adw.PreferencesGroup({
             title: _('Window Effects'),
             description: _('Control window display effects'),
@@ -248,17 +176,13 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
             { value: 'blinds', label: _('Blinds Effect') },
         ];
         const windowOpenTypeDown = new Gtk.DropDown({
-            model: windowOpenTypeList,
-            valign: Gtk.Align.CENTER,
-            width_request: 200,
+            model: windowOpenTypeList, valign: Gtk.Align.CENTER, width_request: 200,
         });
 
         const windowOpenTypeSetting = () => {
             const curVal = settings.get_string('window-open-type');
             const idx = windowOpenTypeMap.findIndex(item => item.value === curVal);
-            if (idx >= 0) {
-                windowOpenTypeDown.set_selected(idx);
-            }
+            if (idx >= 0) windowOpenTypeDown.set_selected(idx);
         };
         windowOpenTypeSetting();
 
@@ -299,17 +223,13 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
             { value: 'blinds', label: _('Blinds Effect') },
         ];
         const windowCloseTypeDown = new Gtk.DropDown({
-            model: windowCloseTypeList,
-            valign: Gtk.Align.CENTER,
-            width_request: 200,
+            model: windowCloseTypeList, valign: Gtk.Align.CENTER, width_request: 200,
         });
 
         const windowCloseTypeSetting = () => {
             const curVal = settings.get_string('window-close-type');
             const idx = windowCloseTypeMap.findIndex(item => item.value === curVal);
-            if (idx >= 0) {
-                windowCloseTypeDown.set_selected(idx);
-            }
+            if (idx >= 0) windowCloseTypeDown.set_selected(idx);
         };
         windowCloseTypeSetting();
 
@@ -350,17 +270,13 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
             { value: 'scale', label: _('Scale Effect') },
         ];
         const windowMinimizeTypeDown = new Gtk.DropDown({
-            model: windowMinimizeTypeList,
-            valign: Gtk.Align.CENTER,
-            width_request: 200,
+            model: windowMinimizeTypeList, valign: Gtk.Align.CENTER, width_request: 200,
         });
 
         const windowMinimizeTypeSetting = () => {
             const curVal = settings.get_string('window-minimize-type');
             const idx = windowMinimizeTypeMap.findIndex(item => item.value === curVal);
-            if (idx >= 0) {
-                windowMinimizeTypeDown.set_selected(idx);
-            }
+            if (idx >= 0) windowMinimizeTypeDown.set_selected(idx);
         };
         windowMinimizeTypeSetting();
 
@@ -401,17 +317,13 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
             { value: 'scale', label: _('Scale Effect') },
         ];
         const windowUnminimizeTypeDown = new Gtk.DropDown({
-            model: windowUnminimizeTypeList,
-            valign: Gtk.Align.CENTER,
-            width_request: 200,
+            model: windowUnminimizeTypeList, valign: Gtk.Align.CENTER, width_request: 200,
         });
 
         const windowUnminimizeTypeSetting = () => {
             const curVal = settings.get_string('window-unminimize-type');
             const idx = windowUnminimizeTypeMap.findIndex(item => item.value === curVal);
-            if (idx >= 0) {
-                windowUnminimizeTypeDown.set_selected(idx);
-            }
+            if (idx >= 0) windowUnminimizeTypeDown.set_selected(idx);
         };
         windowUnminimizeTypeSetting();
 
@@ -437,9 +349,126 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
         notebook.append_page(windowPage, new Gtk.Label({ label: _('Window') }));
         // window end
 
+        // dock begin
+        const dockPage = new Adw.PreferencesPage();
+        const dockGroup = new Adw.PreferencesGroup({
+            title: _('Dock'),
+            description: _('A bottom dock that appears when the pointer touches the bottom edge'),
+        });
+
+        const dockShowEnableRow = new Adw.SwitchRow({
+            title: _('Enable Dock'),
+            subtitle: _('When enabled, show a dock at the bottom of the screen that appears when the pointer touches the bottom edge'),
+        });
+        settings.bind('dock-show-enable', dockShowEnableRow, 'active', Gio.SettingsBindFlags.DEFAULT);
+        dockGroup.add(dockShowEnableRow);
+
+        const dockIconSizes = [16, 24, 32, 48, 64, 96, 128];
+        const dockIconSizeRow = new Adw.ActionRow({
+            title: _('Dock Icon Size'),
+            subtitle: _('Size of the dock icons in pixels'),
+        });
+        const dockIconSizeScale = new Gtk.Scale({
+            orientation: Gtk.Orientation.HORIZONTAL,
+            adjustment: new Gtk.Adjustment({ lower: 16, upper: 128, step_increment: 1, page_increment: 10 }),
+            digits: 0, draw_value: false, hexpand: false, width_request: 220, valign: Gtk.Align.CENTER,
+        });
+        const dockIconSizeLabel = new Gtk.Label({
+            width_chars: 5, xalign: 1, valign: Gtk.Align.CENTER, css_classes: ['dim-label'],
+            hexpand: false,
+        });
+
+        const snapToNearestSize = (val) => {
+            let best = dockIconSizes[0];
+            let minDiff = Infinity;
+            for (const s of dockIconSizes) {
+                const diff = Math.abs(s - val);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    best = s;
+                }
+            }
+            return best;
+        };
+
+        const updateDockIconSizeUI = (val) => {
+            dockIconSizeScale.set_value(val);
+            dockIconSizeLabel.set_label(`${val} px`);
+        };
+
+        let isUpdatingIconSize = false;
+
+        dockIconSizeScale.set_value(settings.get_int('dock-icon-size'));
+        dockIconSizeLabel.set_label(`${settings.get_int('dock-icon-size')} px`);
+
+        dockIconSizeScale.connect('value-changed', () => {
+            if (isUpdatingIconSize) return;
+            const rawVal = dockIconSizeScale.get_value();
+            const snapped = snapToNearestSize(rawVal);
+            dockIconSizeLabel.set_label(`${snapped} px`);
+
+            if (snapped !== rawVal) {
+                GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                    isUpdatingIconSize = true;
+                    dockIconSizeScale.set_value(snapped);
+                    isUpdatingIconSize = false;
+                    return GLib.SOURCE_REMOVE;
+                });
+            }
+
+            if (settings.get_int('dock-icon-size') !== snapped) {
+                settings.set_int('dock-icon-size', snapped);
+            }
+        });
+
+        settings.connect('changed::dock-icon-size', () => {
+            const v = settings.get_int('dock-icon-size');
+            if (Math.abs(dockIconSizeScale.get_value() - v) > 0.1) {
+                isUpdatingIconSize = true;
+                updateDockIconSizeUI(v);
+                isUpdatingIconSize = false;
+            } else {
+                dockIconSizeLabel.set_label(`${v} px`);
+            }
+        });
+
+        dockIconSizeRow.add_suffix(dockIconSizeScale);
+        dockIconSizeRow.add_suffix(dockIconSizeLabel);
+        dockIconSizeRow.activatable_widget = dockIconSizeScale;
+        dockGroup.add(dockIconSizeRow);
+
+        const dockBgColorRow = this._createColorRow({
+            settings,
+            key: 'dock-background-color',
+            title: _('Dock Background Color'),
+            subtitle: _('Dock background color in hexadecimal format, e.g. #000000 or #1c1c1c'),
+        });
+        dockGroup.add(dockBgColorRow);
+
+        const dockBgOpacityRow = this._createScaleRow({
+            settings,
+            key: 'dock-background-opacity',
+            title: _('Dock Background Opacity'),
+            subtitle: _('Opacity of the dock background, 0 = fully transparent, 100 = fully opaque'),
+            lower: 0, upper: 100, step: 1, digits: 0, suffix: '%',
+        });
+        dockGroup.add(dockBgOpacityRow);
+
+        const dockEnableBind = () => {
+            const on = settings.get_boolean('dock-show-enable');
+            dockIconSizeRow.set_sensitive(on);
+            dockBgColorRow.set_sensitive(on);
+            dockBgOpacityRow.set_sensitive(on);
+        };
+        settings.connect('changed::dock-show-enable', dockEnableBind);
+        dockEnableBind();
+
+        dockPage.add(dockGroup);
+        notebook.append_page(dockPage, new Gtk.Label({ label: _('Dock') }));
+        // dock end
+
         // clock begin
         const clockPage = new Adw.PreferencesPage();
-
         const clockGroup = new Adw.PreferencesGroup({
             title: _('Clock Format'),
             description: _('Customize the format of the panel clock'),
@@ -507,17 +536,12 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
         };
 
         clockFormatStringButton.connect('clicked', () => {
-            if (!clockFormatStringEditing) {
-                clockFormatStringInto();
-            } else {
-                clockFormatStringExit(true);
-            }
+            if (!clockFormatStringEditing) clockFormatStringInto();
+            else clockFormatStringExit(true);
         });
 
         clockFormatStringEntry.connect('activate', () => {
-            if (clockFormatStringEditing) {
-                clockFormatStringExit(true);
-            }
+            if (clockFormatStringEditing) clockFormatStringExit(true);
         });
 
         settings.connect('changed::clock-format-string', () => {
@@ -540,37 +564,18 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
         clockFormatEnableBind();
 
         const clockFormatSpecifiersString = [
-            ['%Y', _('Year (4-digit)')],
-            ['%y', _('Year (2-digit)')],
-            ['%m', _('Month (01-12)')],
-            ['%d', _('Day (01-31)')],
-            ['%e', _('Day (1-31)')],
-            ['%H', _('Hour, 24h (00-23)')],
-            ['%I', _('Hour, 12h (01-12)')],
-            ['%M', _('Minute (00-59)')],
-            ['%S', _('Second (00-59)')],
-            ['%p', _('AM/PM')],
-            ['%A', _('Weekday (full)')],
-            ['%a', _('Weekday (short)')],
-            ['%B', _('Month name (full)')],
-            ['%b', _('Month name (short)')],
-            ['%j', _('Day of year (001-366)')],
-            ['%u', _('Weekday (1-7, Mon=1)')],
-            ['%w', _('Weekday (0-6, Sun=0)')],
-            ['%V', _('ISO week number (01-53)')],
-            ['%Z', _('Time zone name')],
-            ['%z', _('Time zone offset (+hhmm)')],
-            ['%%', _('Literal %')],
+            ['%Y', _('Year (4-digit)')], ['%y', _('Year (2-digit)')], ['%m', _('Month (01-12)')],
+            ['%d', _('Day (01-31)')], ['%e', _('Day (1-31)')], ['%H', _('Hour, 24h (00-23)')],
+            ['%I', _('Hour, 12h (01-12)')], ['%M', _('Minute (00-59)')], ['%S', _('Second (00-59)')],
+            ['%p', _('AM/PM')], ['%A', _('Weekday (full)')], ['%a', _('Weekday (short)')],
+            ['%B', _('Month name (full)')], ['%b', _('Month name (short)')], ['%j', _('Day of year (001-366)')],
+            ['%u', _('Weekday (1-7, Mon=1)')], ['%w', _('Weekday (0-6, Sun=0)')], ['%V', _('ISO week number (01-53)')],
+            ['%Z', _('Time zone name')], ['%z', _('Time zone offset (+hhmm)')], ['%%', _('Literal %')],
         ];
 
         const clockFormatSpecifiersGrid = new Gtk.Grid({
-            column_spacing: 24,
-            row_spacing: 6,
-            margin_top: 6,
-            margin_bottom: 6,
-            margin_start: 6,
-            margin_end: 6,
-            hexpand: true,
+            column_spacing: 24, row_spacing: 6, margin_top: 6, margin_bottom: 6,
+            margin_start: 6, margin_end: 6, hexpand: true,
         });
 
         for (let i = 0; i < clockFormatSpecifiersString.length; i++) {
@@ -578,55 +583,25 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
             const col = i % 2;
             const row = Math.floor(i / 2);
 
-            const codeLabel = new Gtk.Label({
-                label: code,
-                xalign: 0,
-                width_chars: 4,
-                css_classes: ['monospace'],
-            });
+            const codeLabel = new Gtk.Label({ label: code, xalign: 0, width_chars: 4, css_classes: ['monospace'] });
+            const descLabel = new Gtk.Label({ label: desc, xalign: 0, hexpand: true });
 
-            const descLabel = new Gtk.Label({
-                label: desc,
-                xalign: 0,
-                hexpand: true,
-            });
-
-            clockFormatSpecifiersGrid.attach(codeLabel, col * 2,     row, 1, 1);
+            clockFormatSpecifiersGrid.attach(codeLabel, col * 2, row, 1, 1);
             clockFormatSpecifiersGrid.attach(descLabel, col * 2 + 1, row, 1, 1);
         }
 
-        const specInnerFrame = new Gtk.Frame({
-            child: clockFormatSpecifiersGrid,
-            hexpand: true,
-            css_classes: ['visual-tweak-frame'],
-        });
-
-        const specTitleLabel = new Gtk.Label({
-            label: _('Format Specifiers'),
-            xalign: 0,
-            css_classes: ['heading'],
-        });
-
+        const specInnerFrame = new Gtk.Frame({ child: clockFormatSpecifiersGrid, hexpand: true, css_classes: ['visual-tweak-frame'] });
+        const specTitleLabel = new Gtk.Label({ label: _('Format Specifiers'), xalign: 0, css_classes: ['heading'] });
         const specOuterBox = new Gtk.Box({
-            orientation: Gtk.Orientation.VERTICAL,
-            spacing: 6,
-            margin_top: 6,
-            margin_bottom: 6,
-            margin_start: 6,
-            margin_end: 6,
-            hexpand: true,
+            orientation: Gtk.Orientation.VERTICAL, spacing: 6, margin_top: 6,
+            margin_bottom: 6, margin_start: 6, margin_end: 6, hexpand: true,
         });
         specOuterBox.append(specTitleLabel);
         specOuterBox.append(specInnerFrame);
 
         const specOuterFrame = new Gtk.Frame({
-            child: specOuterBox,
-            hexpand: true,
-            margin_top: 12,
-            margin_bottom: 12,
-            margin_start: 12,
-            margin_end: 12,
-            css_classes: ['visual-tweak-frame'],
+            child: specOuterBox, hexpand: true, margin_top: 12, margin_bottom: 12,
+            margin_start: 12, margin_end: 12, css_classes: ['visual-tweak-frame'],
         });
 
         const specContainer = new Adw.ActionRow({ activatable: false });
@@ -634,13 +609,11 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
         clockGroup.add(specContainer);
 
         clockPage.add(clockGroup);
-
         notebook.append_page(clockPage, new Gtk.Label({ label: _('Clock') }));
         // clock end
 
         // about begin
         const aboutPage = new Adw.PreferencesPage();
-
         const aboutGroup = new Adw.PreferencesGroup({
             title: _('Visual Tweak'),
             description: _('Configure some display effects of GNOME Shell'),
@@ -655,14 +628,11 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
             Gtk.show_uri(null, 'https://github.com/bleakwind/visual-tweak', Gdk.CURRENT_TIME);
         });
         aboutGroup.add(aboutWebsiteUrlRow);
-
         aboutPage.add(aboutGroup);
         notebook.append_page(aboutPage, new Gtk.Label({ label: _('About') }));
         // about end
 
-        const centerBox = new Gtk.CenterBox({
-            orientation: Gtk.Orientation.HORIZONTAL,
-        });
+        const centerBox = new Gtk.CenterBox({ orientation: Gtk.Orientation.HORIZONTAL });
         centerBox.set_center_widget(notebook);
         centerBox.set_hexpand(true);
         vbox.append(header);
@@ -672,52 +642,27 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
     }
 
     /**
-     * @brief Create an Adw.ActionRow with a Gtk.Scale bound to a numeric setting
-     * @param options.settings GSettings instance
-     * @param options.key Settings key
-     * @param options.title Row title
-     * @param options.subtitle Row subtitle
-     * @param options.lower Minimum value
-     * @param options.upper Maximum value
-     * @param options.step Scale step increment
-     * @param options.digits Display digits
-     * @param options.suffix Value suffix such as '%'
-     * @param options.mapTo Optional value converter from setting value to UI value
-     * @param options.mapFrom Optional value converter from UI value to setting value
-     * @return The created Adw.ActionRow
+     * @brief Create a scale row bound to an integer or double settings key
+     * @param options Row options: settings, key, title, subtitle, lower, upper, step, digits, suffix, mapTo, mapFrom
+     * @return A new Adw.ActionRow containing the scale and a value label
      */
     _createScaleRow({
-        settings, key, title, subtitle,
-        lower, upper, step, digits, suffix,
-        mapTo = v => v,
-        mapFrom = v => Math.round(v),
+        settings, key, title, subtitle, lower, upper, step, digits, suffix,
+        mapTo = v => v, mapFrom = v => Math.round(v),
     }) {
         const row = new Adw.ActionRow({ title, subtitle });
-
         const scale = new Gtk.Scale({
             orientation: Gtk.Orientation.HORIZONTAL,
-            adjustment: new Gtk.Adjustment({
-                lower,
-                upper,
-                step_increment: step,
-                page_increment: step * 10,
-            }),
-            digits,
-            draw_value: false,
-            hexpand: true,
-            width_request: 220,
-            valign: Gtk.Align.CENTER,
+            adjustment: new Gtk.Adjustment({ lower, upper, step_increment: step, page_increment: step * 10 }),
+            digits, draw_value: false, hexpand: false, width_request: 220, valign: Gtk.Align.CENTER,
         });
 
         const valueLabel = new Gtk.Label({
-            width_chars: 5,
-            xalign: 1,
-            valign: Gtk.Align.CENTER,
-            css_classes: ['dim-label'],
+            width_chars: 5, xalign: 1, valign: Gtk.Align.CENTER, css_classes: ['dim-label'],
+            hexpand: false,
         });
 
         const storedType = settings.get_value(key).get_type_string();
-
         const rawInit = settings.get_value(key).recursiveUnpack();
         const uiInit = mapTo(rawInit);
         scale.set_value(uiInit);
@@ -746,26 +691,17 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
     }
 
     /**
-     * @brief Create an Adw.ActionRow with a Gtk.ColorButton bound to a color setting
-     * @param options.settings GSettings instance
-     * @param options.key Settings key
-     * @param options.title Row title
-     * @param options.subtitle Row subtitle
-     * @return The created Adw.ActionRow
+     * @brief Create a color row bound to a hex string settings key
+     * @param options Row options: settings, key, title, subtitle
+     * @return A new Adw.ActionRow containing the color button
      */
     _createColorRow({ settings, key, title, subtitle }) {
         const row = new Adw.ActionRow({ title, subtitle });
-
-        const colorButton = new Gtk.ColorButton({
-            valign: Gtk.Align.CENTER,
-            use_alpha: false,
-        });
+        const colorButton = new Gtk.ColorButton({ valign: Gtk.Align.CENTER, use_alpha: false });
 
         const applyToButton = (hex) => {
             const rgba = new Gdk.RGBA();
-            if (rgba.parse(hex)) {
-                colorButton.set_rgba(rgba);
-            }
+            if (rgba.parse(hex)) colorButton.set_rgba(rgba);
         };
         applyToButton(settings.get_string(key));
 
@@ -785,16 +721,12 @@ export default class VisualTweakPreferences extends ExtensionPreferences {
     }
 
     /**
-     * @brief Convert a Gdk.RGBA color to a #rrggbb hex string
-     * @param rgba The Gdk.RGBA color
-     * @return Hex color string with a leading #
+     * @brief Convert a Gdk.RGBA color to a lowercase hex string
+     * @param rgba The RGBA color to convert
+     * @return A string like '#rrggbb'
      */
     _rgbaToHex(rgba) {
-        const toByte = (v) => {
-            return Math.round(Math.max(0, Math.min(1, v)) * 255)
-                .toString(16)
-                .padStart(2, '0');
-        };
+        const toByte = (v) => Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, '0');
         return `#${toByte(rgba.red)}${toByte(rgba.green)}${toByte(rgba.blue)}`;
     }
 }

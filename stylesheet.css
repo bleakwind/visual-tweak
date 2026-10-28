@@ -1,1 +1,86 @@
-/* style list */
+/* ====== visual-tweak-dock-bar ====== */
+.visual-tweak-dock-bar {
+    padding: 4px 8px;
+    spacing: 4px;
+    background-color: rgba(0, 0, 0, 0.5);
+    border-radius: 12px;
+}
+
+.visual-tweak-dock-bar .dock-bar-separator {
+    width: 1px;
+    background-color: rgba(255, 255, 255, 0.2);
+    margin: 12px 2px;
+}
+
+.visual-tweak-dock-bar .dock-bar-sabtn {
+    padding: 0px;
+    border-radius: 10px;
+}
+.visual-tweak-dock-bar .dock-bar-sabtn:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+}
+.visual-tweak-dock-bar .dock-bar-saico {
+    color: #ffffff;
+}
+
+.visual-tweak-dock-bar .dock-bar-itembox {
+    margin: 0 0px;
+    border-radius: 10px;
+}
+.visual-tweak-dock-bar .dock-bar-itembox:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+}
+
+.visual-tweak-dock-bar .dock-bar-appbtn {
+    padding: 0px;
+    border-radius: 10px;
+}
+
+.visual-tweak-dock-bar .dock-bar-appico {
+    color: inherit;
+}
+
+.visual-tweak-dock-bar .dock-bar-dotbox {
+    spacing: 3px;
+}
+.visual-tweak-dock-bar .dock-bar-dotlist {
+    width: 4px;
+    height: 4px;
+    border-radius: 2px;
+    background-color: #ffffff;
+}
+
+/* ====== visual-tweak-dock-label ====== */
+.visual-tweak-dock-label {
+    font-size: 0.9em;
+    color: #ffffff;
+    background-color: rgba(0, 0, 0, 0.75);
+    border-radius: 6px;
+    padding: 4px 10px;
+    margin-bottom: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* ====== visual-tweak-dock-menu ====== */
+.visual-tweak-dock-menu {
+    min-width: 0;
+}
+.visual-tweak-dock-menu,
+.visual-tweak-dock-menu .popup-menu-content {
+    border: none;
+    box-shadow: none;
+}
+.visual-tweak-dock-menu .dock-menu-item {
+    border: none;
+    box-shadow: none;
+}
+.visual-tweak-dock-menu .dock-menu-item:hover {
+    background-color: rgba(0, 0, 0, 0.3);
+}
+.visual-tweak-dock-menu .dock-menu-winlist {
+    background-color: rgba(0, 0, 0, 0.1);
+    border-radius: 6px;
+}
+.visual-tweak-dock-menu .dock-menu-winlist:hover {
+    background-color: rgba(0, 0, 0, 0.3);
+}

@@ -1,7 +1,7 @@
 # visual-tweak
 
 ## A GNOME Shell extension to configure some display effects of GNOME Shell...
-Visual Tweak is a lightweight GNOME Shell extension that lets you customize various visual aspects of the GNOME desktop. It is designed to grow over time, and currently it focuses on beautifying the top panel and customizing the clock, with more display-related features planned for the future.
+Visual Tweak is a lightweight GNOME Shell extension that lets you customize various visual aspects of the GNOME desktop. It is designed to grow over time, and currently it focuses on beautifying the top panel, customizing the clock, and providing an auto-hiding bottom dock, with more display-related features planned for the future.
 
 ## Features
 - Custom panel background opacity adjustable from fully transparent to fully opaque
@@ -11,6 +11,12 @@ Visual Tweak is a lightweight GNOME Shell extension that lets you customize vari
 - Custom Window close animation effect with selectable type
 - Custom Window minimize animation effect with selectable type
 - Custom Window unminimize (restore) animation effect with selectable type
+- Auto-hiding bottom dock that appears when the pointer touches the bottom edge
+- Dock with configurable icon size, background color and background opacity
+- Dock showing favorites, running apps, running indicators and app tooltips
+- Dock context menu with window thumbnails, New Window, Pin/Unpin and Quit
+- Dock drag-and-drop reordering of favorite apps
+- Dock click actions: activate/cycle windows, open new window, shift-click minimize
 - Custom clock format using strftime-style specifiers
 
 ## How It Works
@@ -30,6 +36,15 @@ Visual Tweak is a lightweight GNOME Shell extension that lets you customize vari
 #### Window Unminimize
 - **`Genie effect`** - Reuses the Genie geometry from minimize, but the progress is inverted, so the window appears to be "pulled out" from the icon and expand to its original size.
 - **`Scale effect`** - Reuses the scaling of vertices from the Scale effect in minimize, with inverted progress, so the window grows from the icon center back to its original size and becomes visible again when done.
+
+#### Dock
+- **Appearance** - Background color and background opacity (0-100%) are configurable. The dock's window icon geometry is reported to the compositor so minimize/genie effects fly toward the dock icon.
+- **Overview** - While the dock is enabled, the system dash is set to fully transparent (opacity 0) and made non-reactive. When the overview is open, the extension's dock replaces it and stays visible at the bottom without hiding.
+- **Visibility** - The dock is normally hidden below the screen edge. It slides up when the pointer reaches the bottom edge of the screen, triggered by dwelling in the hot zone, moving the pointer down quickly, or entering the hot zone and moving horizontally far enough.
+- **Auto-hide** - Once shown, the dock stays visible while no window covers its area. When a window overlaps the dock region on the active workspace, the dock hides after a short delay unless the pointer is inside the dock or a context menu is open.
+- **Click actions** - Left click activates the app and cycles through its windows on the active workspace; middle click opens a new window (or activates the app if it cannot open a new one); right click opens a context menu with window thumbnails or a text list, plus New Window, Pin/Unpin and Quit.
+- **Shift click** - A single shift click minimizes one window of the app on the active workspace and advances a per-app cursor; a double shift click minimizes all of that app's windows on the active workspace.
+- **Drag and drop** - Favorite icons can be dragged to reorder them; the new order is saved to the `favorite-apps` key of `org.gnome.shell`.
 
 ## Screenshot
 ![Visual Tweak Screenshot](https://github.com/bleakwind/visual-tweak/blob/main/visual-tweak.jpg)

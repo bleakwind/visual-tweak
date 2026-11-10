@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-28 15:01+0800\n"
-"PO-Revision-Date: 2026-10-28 15:07+0800\n"
+"POT-Creation-Date: 2026-11-10 19:07+0800\n"
+"PO-Revision-Date: 2026-11-11 07:11+0800\n"
 "Last-Translator: Rick Wu <bleakwind@qq.com>\n"
 "Language-Team: Chinese (simplified) <i18n-zh@googlegroups.com>\n"
 "Language: zh_CN\n"
@@ -178,7 +178,7 @@ msgstr "Dock"
 
 #: prefs.js:356
 msgid "A bottom dock that appears when the pointer touches the bottom edge"
-msgstr "一个在指针触碰屏幕底边时出现的 Dock"
+msgstr "鼠标触碰屏幕底边时底部显示Dock"
 
 #: prefs.js:360
 msgid "Enable Dock"
@@ -186,7 +186,7 @@ msgstr "打开Dock"
 
 #: prefs.js:361
 msgid "When enabled, show a dock at the bottom of the screen that appears when the pointer touches the bottom edge"
-msgstr "启用后，当指针触碰屏幕底边时，屏幕底部会显示一个 Dock"
+msgstr "启用后，当鼠标触碰屏幕底边时，屏幕底部会显示Dock"
 
 #: prefs.js:368
 msgid "Dock Icon Size"
@@ -344,30 +344,38 @@ msgstr "主页"
 msgid "About"
 msgstr "关于"
 
-#: module_dock.js:1040 module_dock.js:2599
+#: module_dock.js:1143 module_dock.js:3001
 msgid "New Window"
 msgstr "新建窗口"
 
-#: module_dock.js:1046 module_dock.js:2605
+#: module_dock.js:1149 module_dock.js:3007
 msgid "Unpin"
 msgstr "取消固定"
 
-#: module_dock.js:1046 module_dock.js:2605
+#: module_dock.js:1149 module_dock.js:3007
 msgid "Pin"
 msgstr "固定"
 
-#: module_dock.js:1054 module_dock.js:2613
+#: module_dock.js:1157 module_dock.js:3015
 msgid "Quit"
 msgstr "退出"
 
-#: module_dock.js:2161
+#: module_dock.js:2284
 msgid "Show Apps"
 msgstr "显示应用"
 
-#: module_dock.js:2677 module_dock.js:2889
-msgid "(Untitled Window)"
-msgstr "无标题窗口"
+#: module_dock.js:2344
+msgid "Trash"
+msgstr "回收站"
 
-#: module_dock.js:2955
+#: module_dock.js:2406
+msgid "Empty Trash"
+msgstr "清空回收站"
+
+#: module_dock.js:3079 module_dock.js:3293
+msgid "(Untitled Window)"
+msgstr "(无标题窗口)"
+
+#: module_dock.js:3359
 msgid "[No Thumbnail]"
-msgstr "无缩略图"
+msgstr "[无缩略图]"

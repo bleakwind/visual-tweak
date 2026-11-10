@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-28 15:01+0800\n"
+"POT-Creation-Date: 2026-11-10 19:07+0800\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -345,30 +345,38 @@ msgstr ""
 msgid "About"
 msgstr ""
 
-#: module_dock.js:1040 module_dock.js:2599
+#: module_dock.js:1143 module_dock.js:3001
 msgid "New Window"
 msgstr ""
 
-#: module_dock.js:1046 module_dock.js:2605
+#: module_dock.js:1149 module_dock.js:3007
 msgid "Unpin"
 msgstr ""
 
-#: module_dock.js:1046 module_dock.js:2605
+#: module_dock.js:1149 module_dock.js:3007
 msgid "Pin"
 msgstr ""
 
-#: module_dock.js:1054 module_dock.js:2613
+#: module_dock.js:1157 module_dock.js:3015
 msgid "Quit"
 msgstr ""
 
-#: module_dock.js:2161
+#: module_dock.js:2284
 msgid "Show Apps"
 msgstr ""
 
-#: module_dock.js:2677 module_dock.js:2889
+#: module_dock.js:2344
+msgid "Trash"
+msgstr ""
+
+#: module_dock.js:2406
+msgid "Empty Trash"
+msgstr ""
+
+#: module_dock.js:3079 module_dock.js:3293
 msgid "(Untitled Window)"
 msgstr ""
 
-#: module_dock.js:2955
+#: module_dock.js:3359
 msgid "[No Thumbnail]"
 msgstr ""

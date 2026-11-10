@@ -1,7 +1,7 @@
 /* vim: set expandtab tabstop=4 softtabstop=4 shiftwidth=4: */
 /**
  * +-------------------------------------------------------------------------+
- * | $Id: module_dock.js 2026-10-28 15:01:18 Bleakwind Exp $                 |
+ * | $Id: module_dock.js 2026-11-10 19:07:21 Bleakwind Exp $                 |
  * +-------------------------------------------------------------------------+
  * | Copyright (c) 2008-2026 Bleakwind(Rick Wu).                             |
  * +-------------------------------------------------------------------------+
@@ -46,6 +46,7 @@ const DOCK_ICON_MAX_DOTS = 5;
 const DOCK_HIDE_DELAY_MS = 500;
 const DOCK_REFRESH_DEBOUNCE_DELAY = 100;
 const DOCK_MINIMIZE_ALL_DELAY = 250;
+const DOCK_SHIFT_MINIMIZE_DELAY = 150;
 
 const MENU_OPEN_THUMB_MAX = 5;
 const MENU_OPEN_THUMB_WIDTH = 128;
@@ -57,6 +58,7 @@ const MENU_OPEN_LABEL_HEIGHT = 20;
 const MENU_OPEN_EMPTY_HEIGHT = 10;
 
 const MENU_CONTENT_PADDING_LR = 10;
+const MENU_CONTENT_PADDING_T = 10;
 const MENU_CONTENT_PADDING_B = 10;
 const MENU_CONTENT_ITEM_GAP = 10;
 const MENU_CONTENT_ITEM_PADDING = 10;
@@ -64,10 +66,12 @@ const MENU_POPUP_BG_COLOR = 'rgb(255,255,255)';
 const MENU_POPUP_BOX_SHADOW = '0 4px 12px rgba(0, 0, 0, 0.25)';
 const MENU_POPUP_SEPARATOR_COLOR = 'rgba(0, 0, 0, 0.2)';
 
+const TRASH_SCHEME = 'trash://';
+
 export class ModuleDock {
 
     /**
-     * @brief Constructor, store settings and init all state fields
+     * @brief Store settings and init all state fields
      * @param settings GSettings instance
      */
     constructor(settings) {
@@ -110,10 +114,11 @@ export class ModuleDock {
         this._settingsBgOpacityChangedId = null;
 
         this._windowCycleHistory = new Map();
+        this._windowCycleCursor = new Map();
 
         this._shiftClickTimeoutId = 0;
-        this._shiftClickAppInfo = null;
         this._shiftClickCursor = new Map();
+        this._shiftMinimizeTimeoutId = 0;
 
         this._menu = null;
         this._menuManager = null;
@@ -141,6 +146,11 @@ export class ModuleDock {
         this._hoveredItem = null;
         this._hoveredText = '';
 
+        this._trashBox = null;
+        this._trashIcon = null;
+        this._trashMenu = null;
+        this._trashMenuManager = null;
+
         this._iconSize = DOCK_ICON_SIZE_DEFAULT;
         this._buttonSize = 0;
         this._itemSize = 0;
@@ -163,6 +173,7 @@ export class ModuleDock {
         }
 
         this._menuManager = new PopupMenu.PopupMenuManager(this);
+        this._trashMenuManager = new PopupMenu.PopupMenuManager(this);
         this._createDock();
         this._connectMonitor();
         this._connectMousePoll();
@@ -278,14 +289,84 @@ export class ModuleDock {
     }
 
     /**
-     * @brief Return taskbar windows of an app on the active workspace
-     * @param app The Shell.App to query
-     * @return An array of Meta.Window sorted by stable sequence
+     * @brief Return the app id owning a window, or null
+     * @param win The Meta.Window to query
+     * @return The app id or null
      */
-    _getAppWindowsOnActiveWorkspace(app) {
+    _getWindowAppId(win) {
+        if (!win) {
+            return null;
+        }
+        try {
+            const app = Shell.WindowTracker.get_default().get_window_app(win);
+            return app ? app.get_id() : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    /**
+     * @brief Return true if the focused window belongs to the given app
+     * @param appId The app id to test
+     * @return True if the current focus window belongs to the app
+     */
+    _isAppFocused(appId) {
+        try {
+            const fw = global.display.focus_window;
+            return this._getWindowAppId(fw) === appId;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    /**
+     * @brief Return the last activated window of an app using global MRU
+     * @param appId The app id to query
+     * @return The Meta.Window last activated, or null
+     */
+    _getLastActiveWindow(appId) {
+        try {
+            const tabs = global.display.get_tab_list(Meta.TabList.NORMAL, null);
+            for (const w of tabs) {
+                if (!w) {
+                    continue;
+                }
+                if (this._getWindowAppId(w) === appId) {
+                    return w;
+                }
+            }
+        } catch (e) {
+        }
+        return null;
+    }
+
+    /**
+     * @brief Return all windows of an app, active workspace first by creation
+     * @param app The Shell.App to query
+     * @return An array of Meta.Window
+     */
+    _getAppWindowsAllWorkspacesOrdered(app) {
         const appId = app.get_id();
-        const windows = [];
         const tracker = Shell.WindowTracker.get_default();
+
+        let nWorkspaces = 1;
+        let activeIndex = 0;
+        try {
+            const wm = global.workspace_manager;
+            nWorkspaces = Math.max(1, wm.get_n_workspaces());
+            const activeWorkspace = wm.get_active_workspace();
+            activeIndex = activeWorkspace
+                ? activeWorkspace.index()
+                : wm.get_active_workspace_index();
+        } catch (e) {
+            return this._getAppWindows(app);
+        }
+
+        const buckets = new Array(nWorkspaces);
+        for (let i = 0; i < nWorkspaces; i++) {
+            buckets[i] = [];
+        }
+
         for (const actor of global.get_window_actors()) {
             const win = actor.meta_window;
             if (!win) {
@@ -298,24 +379,45 @@ export class ModuleDock {
                 if (win.is_skip_taskbar()) {
                     continue;
                 }
-                if (!this._isWindowOnActiveWorkspace(win)) {
+                const winApp = tracker.get_window_app(win);
+                if (!winApp || winApp.get_id() !== appId) {
                     continue;
                 }
-                const winApp = tracker.get_window_app(win);
-                if (winApp && winApp.get_id() === appId) {
-                    windows.push(win);
+                let wsIndex = activeIndex;
+                if (!win.is_on_all_workspaces()) {
+                    const ws = win.get_workspace();
+                    if (ws) {
+                        wsIndex = ws.index();
+                    }
                 }
+                if (wsIndex < 0 || wsIndex >= nWorkspaces) {
+                    wsIndex = activeIndex;
+                }
+                buckets[wsIndex].push(win);
             } catch (e) {
             }
         }
-        windows.sort((a, b) => {
+
+        const sortBySeq = (a, b) => {
             try {
                 return a.get_stable_sequence() - b.get_stable_sequence();
             } catch (e) {
                 return 0;
             }
-        });
-        return windows;
+        };
+
+        const result = [];
+        for (let k = 0; k < nWorkspaces; k++) {
+            const idx = (activeIndex + k) % nWorkspaces;
+            const bucket = buckets[idx];
+            if (bucket.length > 0) {
+                bucket.sort(sortBySeq);
+                for (const w of bucket) {
+                    result.push(w);
+                }
+            }
+        }
+        return result;
     }
 
     /**
@@ -704,6 +806,7 @@ export class ModuleDock {
      */
     onOverviewShowing() {
         this._hideLabel();
+        this._closeTrashMenu();
         this._inOverview = true;
         this._cancelHide();
 
@@ -751,7 +854,7 @@ export class ModuleDock {
         }
 
         const [x, y] = global.get_pointer();
-        if (this._pointerInDock(x, y) || this._isMenuOpen()) {
+        if (this._pointerInDock(x, y) || this._isMenuOpen() || this._isTrashMenuOpen()) {
             this._cancelHide();
             this._visible = true;
             this._dockBox.translation_y = 0;
@@ -840,7 +943,7 @@ export class ModuleDock {
         });
         this._dockLeaveId = this._dockBox.connect('leave-event', () => {
             this._scheduleLabelHide();
-            if (this._isMenuOpen()) {
+            if (this._isMenuOpen() || this._isTrashMenuOpen()) {
                 return Clutter.EVENT_PROPAGATE;
             }
             if (this._inOverview) {
@@ -884,41 +987,41 @@ export class ModuleDock {
     }
 
     /**
-     * @brief Close and destroy the context menu, releasing all related state
+     * @brief Return true if the trash context menu is open
+     * @return True when the trash menu is open
      */
-    _closeMenu() {
-        this._menuTransitioning = true;
+    _isTrashMenuOpen() {
+        try {
+            return !!(this._trashMenu && this._trashMenu.isOpen);
+        } catch (e) {
+            return false;
+        }
+    }
 
-        if (!this._menu) {
-            this._menuTransitioning = false;
+    /**
+     * @brief Close and destroy the trash context menu
+     */
+    _closeTrashMenu() {
+        if (!this._trashMenu) {
             return;
         }
         try {
-            if (this._menu.isOpen) {
-                try {
-                    this._menu.close(BoxPointer.PopupAnimation.NONE);
-                } catch (e) {
-                }
-            }
-            try {
-                if (this._menuManager) {
-                    this._menuManager.removeMenu(this._menu);
-                }
-            } catch (e) {
-            }
-            try {
-                this._menu.destroy();
-            } catch (e) {
+            if (this._trashMenu.isOpen) {
+                this._trashMenu.close(BoxPointer.PopupAnimation.NONE);
             }
         } catch (e) {
         }
-        this._menu = null;
-        this._menuIsEmpty = false;
-        this._menuSavedBottom = null;
-        this._menuSavedX = null;
-        this._clearMenuWindowSignals();
-
-        this._menuTransitioning = false;
+        try {
+            if (this._trashMenuManager) {
+                this._trashMenuManager.removeMenu(this._trashMenu);
+            }
+        } catch (e) {
+        }
+        try {
+            this._trashMenu.destroy();
+        } catch (e) {
+        }
+        this._trashMenu = null;
     }
 
     /**
@@ -1445,8 +1548,8 @@ export class ModuleDock {
         if (!this._activeWorkspaceChangedId) {
             try {
                 this._activeWorkspaceChangedId = global.workspace_manager.connect('active-workspace-changed', () => {
-                    this._shiftClickCursor.clear();
                     this._windowCycleHistory.clear();
+                    this._windowCycleCursor.clear();
                     this._syncDockVisibility('active-workspace-changed');
                     this._scheduleRefreshDockItems();
                 });
@@ -1663,7 +1766,7 @@ export class ModuleDock {
             }
         } else {
             const [x, y] = global.get_pointer();
-            if (!this._pointerInDock(x, y) && !this._isMenuOpen() && !this._dragActive) {
+            if (!this._pointerInDock(x, y) && !this._isMenuOpen() && !this._isTrashMenuOpen() && !this._dragActive) {
                 this._scheduleHide(`sync:${reason}`);
             }
         }
@@ -1689,7 +1792,7 @@ export class ModuleDock {
         if (Main.overview.visible || !this._getB('dock-show-enable')) {
             return GLib.SOURCE_CONTINUE;
         }
-        if (this._isMenuOpen()) {
+        if (this._isMenuOpen() || this._isTrashMenuOpen()) {
             this._cancelHide();
             return GLib.SOURCE_CONTINUE;
         }
@@ -1805,6 +1908,18 @@ export class ModuleDock {
             }
         }
 
+        if (this._trashMenu && this._trashMenu.actor) {
+            try {
+                const [mx, my] = this._trashMenu.actor.get_transformed_position();
+                const [mw, mh] = this._trashMenu.actor.get_transformed_size();
+                if (mw > 0 && mh > 0 &&
+                    x >= mx && x <= mx + mw && y >= my && y <= my + mh) {
+                    return true;
+                }
+            } catch (e) {
+            }
+        }
+
         return false;
     }
 
@@ -1816,7 +1931,7 @@ export class ModuleDock {
         if (this._inOverview) {
             return;
         }
-        if (this._isMenuOpen()) {
+        if (this._isMenuOpen() || this._isTrashMenuOpen()) {
             return;
         }
         if (!this._visible || this._hideTimeoutId || this._dragActive) {
@@ -1830,7 +1945,7 @@ export class ModuleDock {
             if (this._inOverview) {
                 return GLib.SOURCE_REMOVE;
             }
-            if (this._isMenuOpen()) {
+            if (this._isMenuOpen() || this._isTrashMenuOpen()) {
                 return GLib.SOURCE_REMOVE;
             }
             const [x, y] = global.get_pointer();
@@ -1903,6 +2018,7 @@ export class ModuleDock {
     _hideDock(reason = '') {
         this._cancelHide();
         this._hideLabel();
+        this._closeTrashMenu();
         if (!this._dockBox || !this._visible) {
             return;
         }
@@ -1973,6 +2089,7 @@ export class ModuleDock {
         }
         this._hideLabel();
         this._resetDragState();
+        this._closeTrashMenu();
 
         for (const child of [...this._dockBox.get_children()]) {
             child.destroy();
@@ -2012,6 +2129,10 @@ export class ModuleDock {
             this._iconActors.set(info.get_id(), item);
         }
 
+        this._dockBox.add_child(this._createTrashSeparator());
+        this._trashBox = this._createTrashItem();
+        this._dockBox.add_child(this._trashBox);
+
         this._scheduleLayout();
         this._scheduleUpdateIconGeometries();
         this._refreshInputRegion();
@@ -2024,7 +2145,7 @@ export class ModuleDock {
         if (!this._dockBox) {
             return;
         }
-        if (this._isMenuOpen()) {
+        if (this._isMenuOpen() || this._isTrashMenuOpen()) {
             return;
         }
 
@@ -2080,6 +2201,8 @@ export class ModuleDock {
             this._dockBox.add_child(item);
             this._iconActors.set(appId, item);
         }
+
+        this._refreshTrashIcon();
 
         this._scheduleLayout();
         this._scheduleUpdateIconGeometries();
@@ -2179,6 +2302,242 @@ export class ModuleDock {
     }
 
     /**
+     * @brief Create the separator actor placed before the trash icon
+     * @return A new St.Widget used as the trash separator
+     */
+    _createTrashSeparator() {
+        return new St.Widget({
+            style_class: 'dock-bar-separator dock-bar-separator-trash',
+            y_expand: true,
+            x_align: Clutter.ActorAlign.CENTER,
+        });
+    }
+
+    /**
+     * @brief Create the trash item shown at the rightmost side of the dock
+     * @return A new St.Widget representing the trash item
+     */
+    _createTrashItem() {
+        const itemSize = this._itemSize;
+
+        const itemBox = new St.Widget({
+            style_class: 'dock-bar-itembox', reactive: true, track_hover: true,
+            width: itemSize, height: itemSize, y_align: Clutter.ActorAlign.CENTER,
+        });
+
+        const button = new St.Button({
+            style_class: 'dock-bar-appbtn', reactive: false, can_focus: false,
+            width: itemSize, height: itemSize,
+        });
+
+        const gicon = this._getTrashGIcon();
+        const icon = new St.Icon({ gicon: gicon, icon_size: this._iconSize, style_class: 'dock-bar-appico' });
+        button.set_child(icon);
+        button.set_position(0, 0);
+        button.set_size(itemSize, itemSize);
+        this._trashIcon = icon;
+
+        itemBox.connect('enter-event', () => {
+            if (this._dragActive) {
+                return Clutter.EVENT_PROPAGATE;
+            }
+            this._showLabelFor(itemBox, _('Trash'));
+            return Clutter.EVENT_PROPAGATE;
+        });
+        itemBox.connect('leave-event', () => {
+            this._scheduleLabelHide();
+            return Clutter.EVENT_PROPAGATE;
+        });
+
+        itemBox.connect('button-press-event', (actor, event) => {
+            const btn = event.get_button();
+            if (btn !== 1 && btn !== 3) {
+                return Clutter.EVENT_PROPAGATE;
+            }
+            this._hideLabel();
+            return Clutter.EVENT_PROPAGATE;
+        });
+
+        itemBox.connect('button-release-event', (actor, event) => {
+            const btn = event.get_button();
+            if (btn === 3) {
+                this._showTrashContextMenu(itemBox);
+                return Clutter.EVENT_STOP;
+            }
+            if (btn !== 1) {
+                return Clutter.EVENT_PROPAGATE;
+            }
+            try {
+                if (Main.overview.visible) {
+                    Main.overview.hide();
+                }
+                Gio.AppInfo.launch_default_for_uri(
+                    TRASH_SCHEME,
+                    global.create_app_launch_context(0, -1)
+                );
+            } catch (e) {
+            }
+            return Clutter.EVENT_STOP;
+        });
+
+        itemBox.add_child(button);
+        return itemBox;
+    }
+
+    /**
+     * @brief Show the trash context menu with an empty-trash action
+     * @param sourceActor The trash item actor used as the menu source
+     */
+    _showTrashContextMenu(sourceActor) {
+        this._hideLabel();
+        this._closeTrashMenu();
+
+        if (!this._trashMenuManager) {
+            this._trashMenuManager = new PopupMenu.PopupMenuManager(this);
+        }
+
+        const menu = new PopupMenu.PopupMenu(sourceActor, 0.5, St.Side.BOTTOM);
+        menu.actor.add_style_class_name('visual-tweak-dock-menu');
+        menu.actor.set_style('background-color: transparent; border: none; box-shadow: none;');
+        Main.uiGroup.add_child(menu.actor);
+        this._trashMenuManager.addMenu(menu);
+
+        const isEmpty = this._isTrashEmpty();
+        const emptyItem = new PopupMenu.PopupMenuItem(_('Empty Trash'));
+        emptyItem.add_style_class_name('dock-menu-item');
+        emptyItem.set_style('margin-top: 0;');
+        emptyItem.setSensitive(!isEmpty);
+        if (!isEmpty) {
+            emptyItem.connect('activate', () => {
+                this._emptyTrash();
+            });
+        }
+        menu.addMenuItem(emptyItem);
+
+        menu.connect('open-state-changed', (popupMenu, isOpen) => {
+            if (!isOpen) {
+                try {
+                    if (this._trashMenuManager) {
+                        this._trashMenuManager.removeMenu(popupMenu);
+                    }
+                } catch (e) {
+                }
+                try {
+                    popupMenu.destroy();
+                } catch (e) {
+                }
+                if (this._trashMenu === popupMenu) {
+                    this._trashMenu = null;
+                }
+            }
+        });
+
+        try {
+            menu.open(BoxPointer.PopupAnimation.FULL);
+        } catch (e) {
+        }
+
+        this._applyMenuBackground(menu);
+        this._applyMenuSpacing(menu, true);
+
+        this._trashMenu = menu;
+    }
+
+    /**
+     * @brief Return true if the trash is empty
+     * @return True when there are no items in the trash
+     */
+    _isTrashEmpty() {
+        try {
+            const trashFile = Gio.File.new_for_uri(TRASH_SCHEME);
+            const enumerator = trashFile.enumerate_children(
+                'standard::name',
+                Gio.FileQueryInfoFlags.NONE,
+                null
+            );
+            if (enumerator) {
+                const has = !!enumerator.next_file(null);
+                enumerator.close(null);
+                return !has;
+            }
+        } catch (e) {
+        }
+        return true;
+    }
+
+    /**
+     * @brief Delete every item in the trash, then refresh the trash icon
+     */
+    _emptyTrash() {
+        try {
+            const trashFile = Gio.File.new_for_uri(TRASH_SCHEME);
+            const enumerator = trashFile.enumerate_children(
+                'standard::name,standard::type',
+                Gio.FileQueryInfoFlags.NONE,
+                null
+            );
+            if (enumerator) {
+                const files = [];
+                let info;
+                while ((info = enumerator.next_file(null)) !== null) {
+                    files.push(trashFile.get_child(info.get_name()));
+                }
+                enumerator.close(null);
+                for (const f of files) {
+                    try {
+                        f.delete(null);
+                    } catch (e) {
+                    }
+                }
+            }
+        } catch (e) {
+        }
+        this._refreshTrashIcon();
+    }
+
+    /**
+     * @brief Return the GIcon for the current trash state
+     * @return The Gio.ThemedIcon for the current trash state
+     */
+    _getTrashGIcon() {
+        let isEmpty = true;
+        try {
+            const trashFile = Gio.File.new_for_uri(TRASH_SCHEME);
+            const enumerator = trashFile.enumerate_children(
+                'standard::name',
+                Gio.FileQueryInfoFlags.NONE,
+                null
+            );
+            if (enumerator) {
+                if (enumerator.next_file(null)) {
+                    isEmpty = false;
+                }
+                enumerator.close(null);
+            }
+        } catch (e) {
+            isEmpty = true;
+        }
+
+        if (isEmpty) {
+            return new Gio.ThemedIcon({ names: ['user-trash', 'user-trash-symbolic'] });
+        }
+        return new Gio.ThemedIcon({ names: ['user-trash-full', 'user-trash-full-symbolic'] });
+    }
+
+    /**
+     * @brief Refresh the trash icon to reflect the current trash state
+     */
+    _refreshTrashIcon() {
+        if (!this._trashIcon) {
+            return;
+        }
+        try {
+            this._trashIcon.gicon = this._getTrashGIcon();
+        } catch (e) {
+        }
+    }
+
+    /**
      * @brief Create a single dock item (icon, button, dots) for an app
      * @param appInfo The Gio.DesktopAppInfo of the app
      * @return A new St.Widget representing the dock item
@@ -2207,7 +2566,57 @@ export class ModuleDock {
 
         const agent = new DockDragAgent(this, itemBox, appInfo);
         itemBox._delegate = agent;
-        DND.makeDraggable(itemBox, { restoreOnSuccess: true });
+        itemBox._draggable = DND.makeDraggable(itemBox, {
+            restoreOnSuccess: true,
+            manualMode: true,
+        });
+        itemBox._dragStartX = 0;
+        itemBox._dragStartY = 0;
+        itemBox._dragTracking = false;
+
+        itemBox.connect('button-press-event', (actor, event) => {
+            if (event.get_button() === 1) {
+                const [px, py] = global.get_pointer();
+                itemBox._dragStartX = px;
+                itemBox._dragStartY = py;
+                itemBox._dragTracking = true;
+            }
+            return Clutter.EVENT_PROPAGATE;
+        });
+
+        itemBox.connect('motion-event', (actor, event) => {
+            if (!itemBox._dragTracking || !itemBox._draggable) {
+                return Clutter.EVENT_PROPAGATE;
+            }
+            if (!this._isLeftButtonHeld()) {
+                itemBox._dragTracking = false;
+                return Clutter.EVENT_PROPAGATE;
+            }
+            const [px, py] = global.get_pointer();
+            const dx = px - itemBox._dragStartX;
+            const dy = py - itemBox._dragStartY;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            let threshold = 8;
+            try {
+                threshold = Clutter.Settings.get_default().get_dnd_drag_threshold();
+            } catch (e) {
+            }
+            if (dist >= threshold) {
+                itemBox._dragTracking = false;
+                try {
+                    itemBox._draggable.startDrag(px, py, event.get_time());
+                } catch (e) {
+                }
+            }
+            return Clutter.EVENT_PROPAGATE;
+        });
+
+        itemBox.connect('button-release-event', (actor, event) => {
+            if (event.get_button() === 1) {
+                itemBox._dragTracking = false;
+            }
+            return Clutter.EVENT_PROPAGATE;
+        });
 
         const appName = appInfo.get_name?.() ?? appInfo.get_name;
         itemBox.connect('enter-event', () => {
@@ -2257,32 +2666,12 @@ export class ModuleDock {
             }
             if (buttonNumber === 2) {
                 try {
-                    const app = Shell.AppSystem.get_default().lookup_app(appInfo.get_id());
-                    let canOpenNew = false;
-                    if (app) {
-                        try {
-                            canOpenNew = app.can_open_new_window();
-                        } catch (e) {
-                        }
-                    }
-
                     if (Main.overview.visible) {
                         Main.overview.hide();
                     }
-
-                    if (app && canOpenNew) {
-                        this._launchNewApp(appInfo);
-                    } else if (app) {
-                        const windows = this._getAppWindowsOnActiveWorkspace(app);
-                        if (windows.length > 0) {
-                            try {
-                                Main.activateWindow(windows[0]);
-                            } catch (e) {
-                                app.activate();
-                            }
-                        } else {
-                            app.activate();
-                        }
+                    const app = Shell.AppSystem.get_default().lookup_app(appInfo.get_id());
+                    if (app) {
+                        app.open_new_window(-1);
                     } else {
                         this._launchNewApp(appInfo);
                     }
@@ -2331,6 +2720,19 @@ export class ModuleDock {
         itemBox.add_child(button);
         itemBox.add_child(dotBox);
         return itemBox;
+    }
+
+    /**
+     * @brief Return true if the left mouse button is currently held down
+     * @return True when the left button is pressed
+     */
+    _isLeftButtonHeld() {
+        try {
+            const [x, y, mods] = global.get_pointer();
+            return (mods & Clutter.ModifierType.BUTTON1_MASK) !== 0;
+        } catch (e) {
+            return false;
+        }
     }
 
     /**
@@ -2652,7 +3054,7 @@ export class ModuleDock {
         }
 
         this._applyMenuBackground(menu);
-        this._applyMenuSpacing(menu);
+        this._applyMenuSpacing(menu, false);
 
         this._menu = menu;
         this._menuTransitioning = false;
@@ -2834,13 +3236,15 @@ export class ModuleDock {
     }
 
     /**
-     * @brief Apply spacing to the popup menu content
+     * @brief Apply padding to the popup menu content
      * @param menu The PopupMenu to style
+     * @param symmetricTop True to use the same top and bottom padding
      */
-    _applyMenuSpacing(menu) {
+    _applyMenuSpacing(menu, symmetricTop = false) {
         if (!menu || !menu.actor) {
             return;
         }
+        const padTop = symmetricTop ? MENU_CONTENT_PADDING_T : 0;
         let children = [];
         try {
             children = menu.actor.get_children ? menu.actor.get_children() : [];
@@ -2863,7 +3267,7 @@ export class ModuleDock {
                         g.set_style(
                             `background-color: ${MENU_POPUP_BG_COLOR}; ` +
                             `border: none; box-shadow: ${MENU_POPUP_BOX_SHADOW}; ` +
-                            `padding: 0px ${MENU_CONTENT_PADDING_LR}px ${MENU_CONTENT_PADDING_B}px ${MENU_CONTENT_PADDING_LR}px;`
+                            `padding: ${padTop}px ${MENU_CONTENT_PADDING_LR}px ${MENU_CONTENT_PADDING_B}px ${MENU_CONTENT_PADDING_LR}px;`
                         );
                     } catch (e) {
                     }
@@ -3150,25 +3554,19 @@ export class ModuleDock {
     }
 
     /**
-     * @brief Handle a shift-click on a dock item
+     * @brief Handle a shift-click: single minimizes one window, double all
      * @param appInfo The Gio.DesktopAppInfo of the app
      */
     _handleShiftClick(appInfo) {
         if (this._shiftClickTimeoutId) {
             GLib.Source.remove(this._shiftClickTimeoutId);
             this._shiftClickTimeoutId = 0;
-            this._shiftClickAppInfo = null;
-            this._minimizeAllOnActiveWorkspace(appInfo);
+            this._minimizeAllOnAllWorkspaces(appInfo);
             return;
         }
-        this._shiftClickAppInfo = appInfo;
         this._shiftClickTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, DOCK_MINIMIZE_ALL_DELAY, () => {
             this._shiftClickTimeoutId = 0;
-            const targetAppInfo = this._shiftClickAppInfo;
-            this._shiftClickAppInfo = null;
-            if (targetAppInfo) {
-                this._minimizeOneByCursor(targetAppInfo);
-            }
+            this._minimizeOneAcrossWorkspaces(appInfo);
             return GLib.SOURCE_REMOVE;
         });
     }
@@ -3180,21 +3578,20 @@ export class ModuleDock {
         if (this._shiftClickTimeoutId) {
             GLib.Source.remove(this._shiftClickTimeoutId);
             this._shiftClickTimeoutId = 0;
-            this._shiftClickAppInfo = null;
         }
     }
 
     /**
-     * @brief Single shift-click: minimize one window by cursor and advance cursor
+     * @brief Minimize the next non-minimized window across all workspaces
      * @param appInfo The Gio.DesktopAppInfo of the app
      */
-    _minimizeOneByCursor(appInfo) {
+    _minimizeOneAcrossWorkspaces(appInfo) {
         const app = Shell.AppSystem.get_default().lookup_app(appInfo.get_id());
         if (!app) {
             return;
         }
 
-        const windows = this._getAppWindowsOnActiveWorkspace(app);
+        const windows = this._getAppWindowsAllWorkspacesOrdered(app);
         const appId = appInfo.get_id();
 
         if (windows.length === 0) {
@@ -3202,33 +3599,92 @@ export class ModuleDock {
             return;
         }
 
-        let cursor = this._shiftClickCursor.get(appId) ?? 0;
-        if (!Number.isFinite(cursor) || cursor < 0 || cursor >= windows.length) {
-            cursor = 0;
+        let startIndex = 0;
+        const cursorId = this._shiftClickCursor.get(appId);
+
+        if (cursorId !== undefined) {
+            const idx = windows.findIndex(w => w.get_id() === cursorId);
+            if (idx !== -1) {
+                startIndex = (idx + 1) % windows.length;
+            }
+        } else {
+            const lastActive = this._getLastActiveWindow(appId);
+            if (lastActive) {
+                const idx = windows.findIndex(w => w.get_id() === lastActive.get_id());
+                if (idx !== -1) {
+                    startIndex = idx;
+                }
+            }
         }
 
-        const win = windows[cursor];
+        let target = null;
+        for (let k = 0; k < windows.length; k++) {
+            const idx = (startIndex + k) % windows.length;
+            const w = windows[idx];
+            let minimized = false;
+            try {
+                minimized = w.minimized;
+            } catch (e) {
+                minimized = false;
+            }
+            if (!minimized) {
+                target = w;
+                break;
+            }
+        }
+
+        if (!target) {
+            return;
+        }
+
+        if (this._shiftMinimizeTimeoutId) {
+            GLib.Source.remove(this._shiftMinimizeTimeoutId);
+            this._shiftMinimizeTimeoutId = 0;
+        }
+
         try {
-            if (!win.minimized) {
-                win.minimize();
+            if (!target.is_on_all_workspaces()) {
+                const ws = target.get_workspace();
+                const active = this._getActiveWorkspace();
+                if (ws && ws !== active) {
+                    ws.activate(global.get_current_time());
+                }
             }
         } catch (e) {
         }
 
-        cursor = (cursor + 1) % windows.length;
-        this._shiftClickCursor.set(appId, cursor);
+        try {
+            Main.activateWindow(target, global.get_current_time());
+        } catch (e) {
+            try {
+                target.activate(global.get_current_time());
+            } catch (e2) {
+            }
+        }
+
+        this._shiftMinimizeTimeoutId = GLib.timeout_add(
+            GLib.PRIORITY_DEFAULT, DOCK_SHIFT_MINIMIZE_DELAY, () => {
+                this._shiftMinimizeTimeoutId = 0;
+                try {
+                    target.minimize();
+                } catch (e) {
+                }
+                return GLib.SOURCE_REMOVE;
+            });
+
+        this._shiftClickCursor.set(appId, target.get_id());
     }
 
     /**
-     * @brief Double shift-click: minimize all windows on the active workspace
+     * @brief Minimize all windows of the app across all workspaces
      * @param appInfo The Gio.DesktopAppInfo of the app
      */
-    _minimizeAllOnActiveWorkspace(appInfo) {
+    _minimizeAllOnAllWorkspaces(appInfo) {
         const app = Shell.AppSystem.get_default().lookup_app(appInfo.get_id());
         if (!app) {
             return;
         }
-        const windows = this._getAppWindowsOnActiveWorkspace(app);
+        const windows = this._getAppWindows(app);
         for (const win of windows) {
             try {
                 if (!win.minimized) {
@@ -3241,7 +3697,7 @@ export class ModuleDock {
     }
 
     /**
-     * @brief Launch a new window of an app
+     * @brief Launch a new window of an app in the current workspace
      * @param appInfo The Gio.DesktopAppInfo of the app
      */
     _launchNewApp(appInfo) {
@@ -3276,7 +3732,7 @@ export class ModuleDock {
     }
 
     /**
-     * @brief Activate an app, cycling through its active-workspace windows
+     * @brief Activate or cycle an app using MRU and workspace ordering
      * @param appInfo The Gio.DesktopAppInfo of the app
      */
     _launchApp(appInfo) {
@@ -3287,59 +3743,69 @@ export class ModuleDock {
             }
 
             if (app.get_state() !== Shell.AppState.RUNNING) {
-                app.activate();
-                return;
-            }
-
-            const windows = this._getAppWindowsOnActiveWorkspace(app);
-            const appId = app.get_id();
-
-            if (windows.length === 0) {
-                this._shiftClickCursor.delete(appId);
                 this._launchNewApp(appInfo);
                 return;
             }
 
-            if (windows.length === 1) {
-                try {
-                    windows[0].activate(global.get_current_time());
-                } catch (e) {
-                    app.activate();
-                }
+            const windows = this._getAppWindowsAllWorkspacesOrdered(app);
+            const appId = app.get_id();
+
+            if (windows.length === 0) {
+                this._windowCycleCursor.delete(appId);
                 this._shiftClickCursor.delete(appId);
+                this._windowCycleHistory.delete(appId);
+                this._launchNewApp(appInfo);
                 return;
             }
 
-            let history = this._windowCycleHistory.get(appId) || [];
-            const currentIds = new Set(windows.map(w => w.get_id()));
-            history = history.filter(id => currentIds.has(id));
+            const focused = this._isAppFocused(appId);
+            const lastActive = this._getLastActiveWindow(appId);
 
-            let currentIndex = -1;
-            if (history.length > 0) {
-                const lastId = history[history.length - 1];
-                currentIndex = windows.findIndex(w => w.get_id() === lastId);
-            }
-            if (currentIndex === -1) {
-                const activeWindow = global.display.focus_window;
-                if (activeWindow) {
-                    currentIndex = windows.findIndex(w => w.get_id() === activeWindow.get_id());
+            let startIndex = 0;
+            if (focused) {
+                const cursorId = this._windowCycleCursor.get(appId);
+                if (cursorId !== undefined) {
+                    const idx = windows.findIndex(w => w.get_id() === cursorId);
+                    if (idx !== -1) {
+                        startIndex = (idx + 1) % windows.length;
+                    }
+                } else if (lastActive) {
+                    const idx = windows.findIndex(w => w.get_id() === lastActive.get_id());
+                    if (idx !== -1) {
+                        startIndex = (idx + 1) % windows.length;
+                    }
+                }
+            } else {
+                if (lastActive) {
+                    const idx = windows.findIndex(w => w.get_id() === lastActive.get_id());
+                    if (idx !== -1) {
+                        startIndex = idx;
+                    }
                 }
             }
 
-            const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % windows.length;
-            const nextWindow = windows[nextIndex];
+            const win = windows[startIndex];
 
             try {
-                nextWindow.activate(global.get_current_time());
-                history.push(nextWindow.get_id());
-                if (history.length > windows.length * 2) {
-                    history = history.slice(-windows.length);
+                if (win.minimized) {
+                    win.unminimize();
                 }
-                this._windowCycleHistory.set(appId, history);
-                this._shiftClickCursor.delete(appId);
+                win.activate(global.get_current_time());
             } catch (e) {
                 app.activate();
             }
+
+            this._windowCycleCursor.set(appId, win.get_id());
+            this._shiftClickCursor.delete(appId);
+
+            let hist = this._windowCycleHistory.get(appId) || [];
+            const currentIds = new Set(windows.map(w => w.get_id()));
+            hist = hist.filter(id => currentIds.has(id));
+            hist.push(win.get_id());
+            if (hist.length > windows.length * 2) {
+                hist = hist.slice(-windows.length);
+            }
+            this._windowCycleHistory.set(appId, hist);
         } catch (e) {
         }
     }
@@ -3354,6 +3820,12 @@ export class ModuleDock {
         this._cancelRefreshDockItems();
         this._clearMenuWindowSignals();
         this._destroyLabel();
+        this._closeTrashMenu();
+
+        if (this._shiftMinimizeTimeoutId) {
+            GLib.Source.remove(this._shiftMinimizeTimeoutId);
+            this._shiftMinimizeTimeoutId = 0;
+        }
 
         if (this._updateIconGeometriesIdleId) {
             GLib.Source.remove(this._updateIconGeometriesIdleId);
@@ -3414,6 +3886,8 @@ export class ModuleDock {
                 }
             }
             this._iconActors.clear();
+            this._trashBox = null;
+            this._trashIcon = null;
             try {
                 Main.layoutManager.removeChrome(this._dockBox);
             } catch (e) {
@@ -3428,6 +3902,7 @@ export class ModuleDock {
         this._visible = false;
         this._inOverview = false;
         this._shiftClickCursor.clear();
+        this._windowCycleCursor.clear();
         this._windowCycleHistory.clear();
     }
 
@@ -3441,32 +3916,6 @@ export class ModuleDock {
             return this._settings.get_boolean(key);
         } catch (e) {
             return false;
-        }
-    }
-
-    /**
-     * @brief Safely read a string setting
-     * @param key The settings key
-     * @return The string value or empty string on error
-     */
-    _getS(key) {
-        try {
-            return this._settings.get_string(key);
-        } catch (e) {
-            return '';
-        }
-    }
-
-    /**
-     * @brief Safely read an integer setting
-     * @param key The settings key
-     * @return The integer value or 0 on error
-     */
-    _getI(key) {
-        try {
-            return this._settings.get_int(key);
-        } catch (e) {
-            return 0;
         }
     }
 
@@ -3590,9 +4039,13 @@ export class ModuleDock {
         this._disconnectMonitor();
         this._disconnectMousePoll();
         this._shiftClickCursor.clear();
+        this._windowCycleCursor.clear();
         this._windowCycleHistory.clear();
         if (this._menuManager) {
             this._menuManager = null;
+        }
+        if (this._trashMenuManager) {
+            this._trashMenuManager = null;
         }
         this._settings = null;
     }
@@ -3602,7 +4055,7 @@ const DockDragActor = GObject.registerClass(
 class DockDragActor extends St.Widget {
 
     /**
-     * @brief Constructor, create the drag actor with the app icon
+     * @brief Create the drag actor with the app icon
      * @param appInfo The app info to render
      * @param size The square size of the drag actor
      * @param iconSize The icon pixel size
@@ -3640,7 +4093,7 @@ const DockDragAgent = GObject.registerClass(
 class DockDragAgent extends GObject.Object {
 
     /**
-     * @brief Constructor, store the module, item box and app info
+     * @brief Store the module, item box and app info
      * @param module The owning ModuleDock instance
      * @param itemBox The dock item actor used as the drag source
      * @param appInfo The app info of the item
@@ -3699,7 +4152,7 @@ const DockDragSpace = GObject.registerClass(
 class DockDragSpace extends GObject.Object {
 
     /**
-     * @brief Constructor, store the owning module
+     * @brief Store the owning module
      * @param module The owning ModuleDock instance
      */
     _init(module) {

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-10 19:07+0800\n"
-"PO-Revision-Date: 2026-11-11 07:11+0800\n"
+"POT-Creation-Date: 2026-11-12 09:08+0800\n"
+"PO-Revision-Date: 2026-11-12 09:11+0800\n"
 "Last-Translator: Rick Wu <bleakwind@qq.com>\n"
 "Language-Team: Chinese (simplified) <i18n-zh@googlegroups.com>\n"
 "Language: zh_CN\n"
@@ -344,38 +344,38 @@ msgstr "主页"
 msgid "About"
 msgstr "关于"
 
-#: module_dock.js:1143 module_dock.js:3001
+#: module_dock.js:1236 module_dock.js:3339
 msgid "New Window"
 msgstr "新建窗口"
 
-#: module_dock.js:1149 module_dock.js:3007
+#: module_dock.js:1242 module_dock.js:3350
 msgid "Unpin"
 msgstr "取消固定"
 
-#: module_dock.js:1149 module_dock.js:3007
+#: module_dock.js:1242 module_dock.js:3350
 msgid "Pin"
 msgstr "固定"
 
-#: module_dock.js:1157 module_dock.js:3015
+#: module_dock.js:1250 module_dock.js:3363
 msgid "Quit"
 msgstr "退出"
 
-#: module_dock.js:2284
+#: module_dock.js:2573
 msgid "Show Apps"
 msgstr "显示应用"
 
-#: module_dock.js:2344
+#: module_dock.js:2633
 msgid "Trash"
 msgstr "回收站"
 
-#: module_dock.js:2406
+#: module_dock.js:2699
 msgid "Empty Trash"
 msgstr "清空回收站"
 
-#: module_dock.js:3079 module_dock.js:3293
+#: module_dock.js:3438 module_dock.js:3661
 msgid "(Untitled Window)"
 msgstr "(无标题窗口)"
 
-#: module_dock.js:3359
+#: module_dock.js:3727
 msgid "[No Thumbnail]"
 msgstr "[无缩略图]"

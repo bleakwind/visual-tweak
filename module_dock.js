@@ -1,7 +1,7 @@
 /* vim: set expandtab tabstop=4 softtabstop=4 shiftwidth=4: */
 /**
  * +-------------------------------------------------------------------------+
- * | $Id: module_dock.js 2026-11-10 19:07:21 Bleakwind Exp $                 |
+ * | $Id: module_dock.js 2026-11-12 09:08:58 Bleakwind Exp $                 |
  * +-------------------------------------------------------------------------+
  * | Copyright (c) 2008-2026 Bleakwind(Rick Wu).                             |
  * +-------------------------------------------------------------------------+
@@ -44,9 +44,10 @@ const DOCK_SIZE_EDGE_GAP = 7;
 const DOCK_ICON_MAX_DOTS = 5;
 
 const DOCK_HIDE_DELAY_MS = 500;
-const DOCK_REFRESH_DEBOUNCE_DELAY = 100;
+const DOCK_REFRESH_DEBOUNCE_DELAY = 250;
 const DOCK_MINIMIZE_ALL_DELAY = 250;
 const DOCK_SHIFT_MINIMIZE_DELAY = 150;
+const DOCK_DRAG_TIMEOUT_MS = 5000;
 
 const MENU_OPEN_THUMB_MAX = 5;
 const MENU_OPEN_THUMB_WIDTH = 128;
@@ -98,6 +99,7 @@ export class ModuleDock {
         this._iconGeometryBatchId = 0;
 
         this._refreshDockIdleId = 0;
+        this._refreshPendingAfterDrag = false;
 
         this._hideTimeoutId = null;
         this._visible = false;
@@ -129,8 +131,10 @@ export class ModuleDock {
         this._menuSavedBottom = null;
         this._menuSavedX = null;
 
-        this._dragSourceAppId = null;
         this._dragActive = false;
+        this._dragInProgress = false;
+        this._dropHandled = false;
+        this._dragTimeoutId = 0;
         this._dragOriginalActor = null;
         this._dragSpace = null;
 
@@ -172,50 +176,65 @@ export class ModuleDock {
             return;
         }
 
-        this._menuManager = new PopupMenu.PopupMenuManager(this);
-        this._trashMenuManager = new PopupMenu.PopupMenuManager(this);
-        this._createDock();
-        this._connectMonitor();
-        this._connectMousePoll();
+        try {
+            this._menuManager = new PopupMenu.PopupMenuManager(this);
+            this._trashMenuManager = new PopupMenu.PopupMenuManager(this);
+            this._createDock();
+            this._connectMonitor();
+            this._connectMousePoll();
 
-        this._settingsShowEnableChangedId = this._settings.connect('changed::dock-show-enable', () => {
-            if (this._getB('dock-show-enable')) {
-                if (!this._dockBox) {
-                    this._createDock();
-                    this._connectMonitor();
-                    this._connectMousePoll();
-                    this._rebuildIcons();
-                    GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-                        this._syncDockVisibility('settings-enable');
-                        return GLib.SOURCE_REMOVE;
-                    });
+            this._settingsShowEnableChangedId = this._settings.connect('changed::dock-show-enable', () => {
+                try {
+                    if (this._getB('dock-show-enable')) {
+                        if (!this._dockBox) {
+                            this._createDock();
+                            this._connectMonitor();
+                            this._connectMousePoll();
+                            this._rebuildIcons();
+                            GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                                this._syncDockVisibility();
+                                return GLib.SOURCE_REMOVE;
+                            });
+                        }
+                    } else {
+                        this._destroyDock();
+                        this._disconnectMonitor();
+                        this._disconnectMousePoll();
+                    }
+                } catch (e) {
                 }
-            } else {
-                this._destroyDock();
-                this._disconnectMonitor();
-                this._disconnectMousePoll();
-            }
-        });
+            });
 
-        this._settingsIconSizeChangedId = this._settings.connect('changed::dock-icon-size', () => {
-            this._updateSizes();
-            if (this._dockBox) {
-                this._rebuildIcons();
-            }
-        });
-        this._settingsBgColorChangedId = this._settings.connect('changed::dock-background-color', () => {
-            this._applyDockBackground();
-        });
-        this._settingsBgOpacityChangedId = this._settings.connect('changed::dock-background-opacity', () => {
-            this._applyDockBackground();
-        });
+            this._settingsIconSizeChangedId = this._settings.connect('changed::dock-icon-size', () => {
+                try {
+                    this._updateSizes();
+                    if (this._dockBox) {
+                        this._rebuildIcons();
+                    }
+                } catch (e) {
+                }
+            });
+            this._settingsBgColorChangedId = this._settings.connect('changed::dock-background-color', () => {
+                try {
+                    this._applyDockBackground();
+                } catch (e) {
+                }
+            });
+            this._settingsBgOpacityChangedId = this._settings.connect('changed::dock-background-opacity', () => {
+                try {
+                    this._applyDockBackground();
+                } catch (e) {
+                }
+            });
 
-        this._rebuildIcons();
+            this._rebuildIcons();
 
-        GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-            this._syncDockVisibility('enable-idle');
-            return GLib.SOURCE_REMOVE;
-        });
+            GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                this._syncDockVisibility();
+                return GLib.SOURCE_REMOVE;
+            });
+        } catch (e) {
+        }
     }
 
     /**
@@ -238,6 +257,9 @@ export class ModuleDock {
         if (!this._dockBox) {
             return;
         }
+        if (this._dragActive || this._dragInProgress) {
+            return;
+        }
         try {
             this._dockBox.hide();
             GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
@@ -250,6 +272,37 @@ export class ModuleDock {
                 return GLib.SOURCE_REMOVE;
             });
         } catch (e) {
+        }
+    }
+
+    /**
+     * @brief Start a timeout that force-clears the drag state if no drop/end fires
+     */
+    _startDragTimeout() {
+        this._cancelDragTimeout();
+        this._dragTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, DOCK_DRAG_TIMEOUT_MS, () => {
+            this._dragTimeoutId = 0;
+            if (this._dragInProgress || this._dragActive || this._dropHandled) {
+                this._dragActive = false;
+                this._dragInProgress = false;
+                this._dropHandled = false;
+                try {
+                    this._flushPendingRefreshAfterDrag();
+                } catch (e) {
+                }
+                this._scheduleHide();
+            }
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    /**
+     * @brief Cancel the drag-state timeout
+     */
+    _cancelDragTimeout() {
+        if (this._dragTimeoutId) {
+            GLib.Source.remove(this._dragTimeoutId);
+            this._dragTimeoutId = 0;
         }
     }
 
@@ -429,13 +482,16 @@ export class ModuleDock {
             return this._labelActor;
         }
 
-        this._labelActor = new St.Label({
-            style_class: 'dash-label visual-tweak-dock-label',
-            opacity: 0,
-            visible: false,
-            reactive: false,
-        });
-        Main.uiGroup.add_child(this._labelActor);
+        try {
+            this._labelActor = new St.Label({
+                style_class: 'dash-label visual-tweak-dock-label',
+                opacity: 0,
+                visible: false,
+                reactive: false,
+            });
+            Main.uiGroup.add_child(this._labelActor);
+        } catch (e) {
+        }
         return this._labelActor;
     }
 
@@ -448,30 +504,32 @@ export class ModuleDock {
         if (!itemBox || !text) {
             return;
         }
+        try {
+            this._hoveredItem = itemBox;
+            this._hoveredText = text;
 
-        this._hoveredItem = itemBox;
-        this._hoveredText = text;
-
-        if (this._labelTargetItem === itemBox && this._labelActor?.visible) {
-            this._cancelLabelHide();
-            return;
-        }
-
-        if (this._showing) {
-            try {
-                this._labelActor?.remove_all_transitions();
-            } catch (e) {
+            if (this._labelTargetItem === itemBox && this._labelActor?.visible) {
+                this._cancelLabelHide();
+                return;
             }
-            this._showing = false;
+
+            if (this._showing) {
+                try {
+                    this._labelActor?.remove_all_transitions();
+                } catch (e) {
+                }
+                this._showing = false;
+            }
+
+            this._labelTargetItem = itemBox;
+            this._labelText = text;
+
+            this._cancelLabelHide();
+            this._cancelLabelShow();
+
+            this._doShowLabel();
+        } catch (e) {
         }
-
-        this._labelTargetItem = itemBox;
-        this._labelText = text;
-
-        this._cancelLabelHide();
-        this._cancelLabelShow();
-
-        this._doShowLabel();
     }
 
     /**
@@ -481,62 +539,71 @@ export class ModuleDock {
         if (!this._labelTargetItem || !this._labelText) {
             return;
         }
-
         if (this._showing) {
             return;
         }
 
-        const label = this._ensureLabelActor();
-        label.set_text(this._labelText);
+        try {
+            const label = this._ensureLabelActor();
+            if (!label) {
+                return;
+            }
+            label.set_text(this._labelText);
 
-        label.opacity = 0;
-        label.visible = true;
+            label.opacity = 0;
+            label.visible = true;
 
-        this._positionLabel();
+            this._positionLabel();
 
-        this._showing = true;
+            this._showing = true;
 
-        label.remove_all_transitions();
-        label.ease({
-            opacity: 255,
-            duration: DOCK_LABEL_FADE_IN,
-            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-            onComplete: () => {
-                this._showing = false;
-            },
-        });
+            label.remove_all_transitions();
+            label.ease({
+                opacity: 255,
+                duration: DOCK_LABEL_FADE_IN,
+                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+                onComplete: () => {
+                    this._showing = false;
+                },
+            });
+        } catch (e) {
+            this._showing = false;
+        }
     }
 
     /**
      * @brief Hide the tooltip label with a fade-out animation
      */
     _hideLabel() {
-        this._cancelLabelShow();
-        this._cancelLabelHide();
+        try {
+            this._cancelLabelShow();
+            this._cancelLabelHide();
 
-        this._showing = false;
+            this._showing = false;
 
-        if (!this._labelActor || !this._labelActor.visible) {
+            if (!this._labelActor || !this._labelActor.visible) {
+                this._labelTargetItem = null;
+                this._labelText = '';
+                return;
+            }
+
+            const label = this._labelActor;
+            label.remove_all_transitions();
+            label.ease({
+                opacity: 0,
+                duration: DOCK_LABEL_FADE_OUT,
+                mode: Clutter.AnimationMode.EASE_IN_QUAD,
+                onComplete: () => {
+                    if (label.opacity === 0) {
+                        label.visible = false;
+                    }
+                },
+            });
+
             this._labelTargetItem = null;
             this._labelText = '';
-            return;
+        } catch (e) {
         }
-
-        const label = this._labelActor;
-        label.remove_all_transitions();
-        label.ease({
-            opacity: 0,
-            duration: DOCK_LABEL_FADE_OUT,
-            mode: Clutter.AnimationMode.EASE_IN_QUAD,
-            onComplete: () => {
-                if (label.opacity === 0) {
-                    label.visible = false;
-                }
-            },
-        });
-
-        this._labelTargetItem = null;
-        this._labelText = '';
     }
 
     /**
@@ -547,36 +614,39 @@ export class ModuleDock {
             return;
         }
 
-        const label = this._labelActor;
-        const item = this._labelTargetItem;
+        try {
+            const label = this._labelActor;
+            const item = this._labelTargetItem;
 
-        if (!item.get_stage()) {
-            return;
+            if (!item.get_stage()) {
+                return;
+            }
+
+            label.ensure_style();
+
+            const [minW, natW] = label.get_preferred_width(-1);
+            const [minH, natH] = label.get_preferred_height(-1);
+            const labelW = Math.max(minW, natW, 1);
+            const labelH = Math.max(minH, natH, 1);
+
+            const [itemX, itemY] = item.get_transformed_position();
+            const [itemW, itemH] = item.get_transformed_size();
+
+            if (!itemW || !itemH) {
+                return;
+            }
+
+            const monitor = Main.layoutManager.findMonitorForActor(item);
+            const labelX = Math.round(itemX + (itemW - labelW) / 2);
+            const labelY = Math.round(itemY - labelH - DOCK_LABEL_EDGE_GAP);
+
+            const minX = monitor.x + 4;
+            const maxX = monitor.x + monitor.width - labelW - 4;
+            const clampedX = Math.min(Math.max(labelX, minX), maxX);
+
+            label.set_position(clampedX, labelY);
+        } catch (e) {
         }
-
-        label.ensure_style();
-
-        const [minW, natW] = label.get_preferred_width(-1);
-        const [minH, natH] = label.get_preferred_height(-1);
-        const labelW = Math.max(minW, natW, 1);
-        const labelH = Math.max(minH, natH, 1);
-
-        const [itemX, itemY] = item.get_transformed_position();
-        const [itemW, itemH] = item.get_transformed_size();
-
-        if (!itemW || !itemH) {
-            return;
-        }
-
-        const monitor = Main.layoutManager.findMonitorForActor(item);
-        const labelX = Math.round(itemX + (itemW - labelW) / 2);
-        const labelY = Math.round(itemY - labelH - DOCK_LABEL_EDGE_GAP);
-
-        const minX = monitor.x + 4;
-        const maxX = monitor.x + monitor.width - labelW - 4;
-        const clampedX = Math.min(Math.max(labelX, minX), maxX);
-
-        label.set_position(clampedX, labelY);
     }
 
     /**
@@ -676,101 +746,110 @@ export class ModuleDock {
             return;
         }
 
-        const monitor = Main.layoutManager.primaryMonitor;
-        if (!monitor) {
-            return;
-        }
-
-        const shownY = monitor.y + monitor.height - this._dockHeight - DOCK_SIZE_EDGE_GAP;
-
-        const tracker = Shell.WindowTracker.get_default();
-        const appSystem = Shell.AppSystem.get_default();
-
-        const updates = [];
-
-        for (const [appId, item] of this._iconActors) {
-            if (!item || !item.get_stage) {
-                continue;
+        try {
+            const monitor = Main.layoutManager.primaryMonitor;
+            if (!monitor) {
+                return;
             }
 
-            let iconActor = item;
-            for (const c of item.get_children ? item.get_children() : []) {
-                let cls = '';
+            const shownY = monitor.y + monitor.height - this._dockHeight - DOCK_SIZE_EDGE_GAP;
+
+            const tracker = Shell.WindowTracker.get_default();
+            const appSystem = Shell.AppSystem.get_default();
+
+            const updates = [];
+
+            for (const [appId, item] of this._iconActors) {
+                if (!item || !item.get_stage) {
+                    continue;
+                }
+
+                let iconActor = item;
                 try {
-                    cls = c.style_class || '';
+                    for (const c of item.get_children ? item.get_children() : []) {
+                        let cls = '';
+                        try {
+                            cls = c.style_class || '';
+                        } catch (e) {
+                        }
+                        if (cls === 'dock-bar-appbtn') {
+                            iconActor = c;
+                            break;
+                        }
+                    }
                 } catch (e) {
                 }
-                if (cls === 'dock-bar-appbtn') {
-                    iconActor = c;
-                    break;
-                }
-            }
 
-            let x, y, w, h;
-            try {
-                [x, y] = iconActor.get_transformed_position();
-                [w, h] = iconActor.get_transformed_size();
-                if (!w || !h) {
-                    continue;
-                }
-            } catch (e) {
-                continue;
-            }
-
-            const [, dockY] = this._dockBox.get_transformed_position();
-            if (Math.abs(dockY - shownY) > 1) {
-                y = shownY + (y - dockY);
-            }
-
-            let rect;
-            try {
-                rect = new Mtk.Rectangle({
-                    x: Math.round(x),
-                    y: Math.round(y),
-                    width: Math.round(w),
-                    height: Math.round(h),
-                });
-            } catch (e) {
-                continue;
-            }
-
-            try {
-                const app = appSystem.lookup_app(appId);
-                if (!app) {
-                    continue;
-                }
-                for (const actor of global.get_window_actors()) {
-                    const win = actor.meta_window;
-                    if (!win) {
+                let x, y, w, h;
+                try {
+                    [x, y] = iconActor.get_transformed_position();
+                    [w, h] = iconActor.get_transformed_size();
+                    if (!w || !h) {
                         continue;
                     }
-                    try {
-                        if (win.get_compositor_private() !== actor) {
+                } catch (e) {
+                    continue;
+                }
+
+                try {
+                    const [, dockY] = this._dockBox.get_transformed_position();
+                    if (Math.abs(dockY - shownY) > 1) {
+                        y = shownY + (y - dockY);
+                    }
+                } catch (e) {
+                }
+
+                let rect;
+                try {
+                    rect = new Mtk.Rectangle({
+                        x: Math.round(x),
+                        y: Math.round(y),
+                        width: Math.round(w),
+                        height: Math.round(h),
+                    });
+                } catch (e) {
+                    continue;
+                }
+
+                try {
+                    const app = appSystem.lookup_app(appId);
+                    if (!app) {
+                        continue;
+                    }
+                    for (const actor of global.get_window_actors()) {
+                        const win = actor.meta_window;
+                        if (!win) {
                             continue;
                         }
-                    } catch (e) {
-                        continue;
+                        try {
+                            if (win.get_compositor_private() !== actor) {
+                                continue;
+                            }
+                        } catch (e) {
+                            continue;
+                        }
+                        if (win.get_window_type() !== Meta.WindowType.NORMAL) {
+                            continue;
+                        }
+                        if (win.is_skip_taskbar()) {
+                            continue;
+                        }
+                        if (!this._isWindowOnActiveWorkspace(win)) {
+                            continue;
+                        }
+                        const winApp = tracker.get_window_app(win);
+                        if (winApp && winApp.get_id() === appId) {
+                            updates.push({ win, rect });
+                        }
                     }
-                    if (win.get_window_type() !== Meta.WindowType.NORMAL) {
-                        continue;
-                    }
-                    if (win.is_skip_taskbar()) {
-                        continue;
-                    }
-                    if (!this._isWindowOnActiveWorkspace(win)) {
-                        continue;
-                    }
-                    const winApp = tracker.get_window_app(win);
-                    if (winApp && winApp.get_id() === appId) {
-                        updates.push({ win, rect });
-                    }
+                } catch (e) {
                 }
-            } catch (e) {
             }
-        }
 
-        this._iconGeometryUpdates = updates;
-        this._scheduleIconGeometryBatch();
+            this._iconGeometryUpdates = updates;
+            this._scheduleIconGeometryBatch();
+        } catch (e) {
+        }
     }
 
     /**
@@ -788,9 +867,9 @@ export class ModuleDock {
                 this._iconGeometryBatchId = 0;
                 return GLib.SOURCE_REMOVE;
             }
-            const { win, rect } = this._iconGeometryUpdates.shift();
+            const entry = this._iconGeometryUpdates.shift();
             try {
-                win.set_icon_geometry(rect);
+                entry.win.set_icon_geometry(entry.rect);
             } catch (e) {
             }
             if (this._iconGeometryUpdates.length === 0) {
@@ -805,67 +884,73 @@ export class ModuleDock {
      * @brief Called when the overview is showing: keep the dock visible but inert
      */
     onOverviewShowing() {
-        this._hideLabel();
-        this._closeTrashMenu();
-        this._inOverview = true;
-        this._cancelHide();
+        try {
+            this._hideLabel();
+            this._closeTrashMenu();
+            this._inOverview = true;
+            this._cancelHide();
 
-        if (!this._dockBox) {
-            return;
+            if (!this._dockBox) {
+                return;
+            }
+
+            this._visible = true;
+            this._showing = false;
+            this._dockBox.remove_all_transitions();
+            this._dockBox.translation_y = 0;
+            this._dockBox.opacity = 255;
+            this._dockBox.reactive = false;
+
+            this._refreshInputRegion();
+            this._ensureMousePoll();
+            this._alignToOverviewDash();
+        } catch (e) {
         }
-
-        this._visible = true;
-        this._showing = false;
-        this._dockBox.remove_all_transitions();
-        this._dockBox.translation_y = 0;
-        this._dockBox.opacity = 255;
-        this._dockBox.reactive = false;
-
-        this._refreshInputRegion();
-        this._ensureMousePoll();
-        this._alignToOverviewDash();
     }
 
     /**
      * @brief Called when the overview is hidden: either keep or hide the dock
      */
     onOverviewHidden() {
-        this._inOverview = false;
+        try {
+            this._inOverview = false;
 
-        if (!this._dockBox) {
-            return;
-        }
+            if (!this._dockBox) {
+                return;
+            }
 
-        this._dockBox.reactive = true;
-        this._ensureMousePoll();
+            this._dockBox.reactive = true;
+            this._ensureMousePoll();
 
-        const covered = this._isDockAreaCovered('overview-hidden');
-        if (!covered) {
-            this._cancelHide();
-            if (!this._visible) {
-                this._showDock('overview-hidden');
-            } else if (Math.abs(this._dockBox.translation_y) > 0.5) {
+            const covered = this._isDockAreaCovered();
+            if (!covered) {
+                this._cancelHide();
+                if (!this._visible) {
+                    this._showDock();
+                } else if (Math.abs(this._dockBox.translation_y) > 0.5) {
+                    this._dockBox.translation_y = 0;
+                    this._refreshInputRegion();
+                    this._scheduleLayout();
+                }
+                this._restoreHoveredLabel();
+                return;
+            }
+
+            const [x, y] = global.get_pointer();
+            if (this._pointerInDock(x, y) || this._isMenuOpen() || this._isTrashMenuOpen()) {
+                this._cancelHide();
+                this._visible = true;
                 this._dockBox.translation_y = 0;
                 this._refreshInputRegion();
                 this._scheduleLayout();
+                this._restoreHoveredLabel();
+                return;
             }
-            this._restoreHoveredLabel();
-            return;
-        }
 
-        const [x, y] = global.get_pointer();
-        if (this._pointerInDock(x, y) || this._isMenuOpen() || this._isTrashMenuOpen()) {
-            this._cancelHide();
-            this._visible = true;
-            this._dockBox.translation_y = 0;
-            this._refreshInputRegion();
+            this._scheduleHide();
             this._scheduleLayout();
-            this._restoreHoveredLabel();
-            return;
+        } catch (e) {
         }
-
-        this._scheduleHide('overview-hidden');
-        this._scheduleLayout();
     }
 
     /**
@@ -876,27 +961,26 @@ export class ModuleDock {
             return;
         }
 
-        const monitor = Main.layoutManager.primaryMonitor;
-        if (!monitor) {
-            return;
-        }
-
-        const targetY = monitor.y + monitor.height - this._dockHeight - DOCK_SIZE_EDGE_GAP;
-
         try {
+            const monitor = Main.layoutManager.primaryMonitor;
+            if (!monitor) {
+                return;
+            }
+
+            const targetY = monitor.y + monitor.height - this._dockHeight - DOCK_SIZE_EDGE_GAP;
+
             this._dockBox.set_height(this._dockHeight);
             this._dockBox.set_y(targetY);
             this._dockBox.translation_y = 0;
             this._dockBox.queue_relayout();
+
+            if (this._labelActor?.visible) {
+                this._positionLabel();
+            }
+
+            this._scheduleUpdateIconGeometries();
         } catch (e) {
         }
-
-        if (this._labelActor?.visible) {
-            this._positionLabel();
-        }
-
-        this._refreshInputRegion();
-        this._scheduleUpdateIconGeometries();
     }
 
     /**
@@ -907,68 +991,74 @@ export class ModuleDock {
             return;
         }
 
-        this._dockBox = new St.BoxLayout({
-            name: 'visual-tweak-dock-bar',
-            style_class: 'visual-tweak-dock-bar',
-            reactive: true,
-            track_hover: true,
-            visible: true,
-            x_expand: false,
-            y_expand: false,
-        });
+        try {
+            this._dockBox = new St.BoxLayout({
+                name: 'visual-tweak-dock-bar',
+                style_class: 'visual-tweak-dock-bar',
+                reactive: true,
+                track_hover: true,
+                visible: true,
+                x_expand: false,
+                y_expand: false,
+            });
 
-        this._dragSpace = new DockDragSpace(this);
-        this._dockBox._delegate = this._dragSpace;
+            this._dragSpace = new DockDragSpace(this);
+            this._dockBox._delegate = this._dragSpace;
 
-        Main.layoutManager.addChrome(this._dockBox, {
-            affectsInputRegion: true,
-            affectsStruts: false,
-            trackFullscreen: true,
-        });
+            Main.layoutManager.addChrome(this._dockBox, {
+                affectsInputRegion: true,
+                affectsStruts: false,
+                trackFullscreen: true,
+            });
 
-        this._dockBox.translation_y = this._dockHeight + DOCK_SIZE_EDGE_GAP;
-        this._visible = false;
-        this._dockBox.reactive = false;
+            this._dockBox.translation_y = this._dockHeight + DOCK_SIZE_EDGE_GAP;
+            this._visible = false;
+            this._dockBox.reactive = false;
 
-        this._alignXConstraint = new Clutter.AlignConstraint({
-            source: global.stage,
-            align_axis: Clutter.AlignAxis.X_AXIS,
-            factor: 0.5,
-        });
-        this._dockBox.add_constraint(this._alignXConstraint);
+            this._alignXConstraint = new Clutter.AlignConstraint({
+                source: global.stage,
+                align_axis: Clutter.AlignAxis.X_AXIS,
+                factor: 0.5,
+            });
+            this._dockBox.add_constraint(this._alignXConstraint);
 
-        this._dockEnterId = this._dockBox.connect('enter-event', () => {
-            this._cancelHide();
-            return Clutter.EVENT_PROPAGATE;
-        });
-        this._dockLeaveId = this._dockBox.connect('leave-event', () => {
-            this._scheduleLabelHide();
-            if (this._isMenuOpen() || this._isTrashMenuOpen()) {
-                return Clutter.EVENT_PROPAGATE;
-            }
-            if (this._inOverview) {
-                return Clutter.EVENT_PROPAGATE;
-            }
-            if (!this._isDockAreaCovered('dock-leave')) {
+            this._dockEnterId = this._dockBox.connect('enter-event', () => {
                 this._cancelHide();
-                this._visible = true;
-                if (Math.abs(this._dockBox.translation_y) > 0.5) {
-                    this._dockBox.remove_all_transitions();
-                    this._dockBox.translation_y = 0;
-                    this._refreshInputRegion();
-                    this._scheduleLayout();
+                return Clutter.EVENT_PROPAGATE;
+            });
+            this._dockLeaveId = this._dockBox.connect('leave-event', () => {
+                try {
+                    this._scheduleLabelHide();
+                    if (this._isMenuOpen() || this._isTrashMenuOpen()) {
+                        return Clutter.EVENT_PROPAGATE;
+                    }
+                    if (this._inOverview) {
+                        return Clutter.EVENT_PROPAGATE;
+                    }
+                    if (!this._isDockAreaCovered()) {
+                        this._cancelHide();
+                        this._visible = true;
+                        if (Math.abs(this._dockBox.translation_y) > 0.5) {
+                            this._dockBox.remove_all_transitions();
+                            this._dockBox.translation_y = 0;
+                            this._refreshInputRegion();
+                            this._scheduleLayout();
+                        }
+                        return Clutter.EVENT_PROPAGATE;
+                    }
+                    this._scheduleHide();
+                } catch (e) {
                 }
                 return Clutter.EVENT_PROPAGATE;
-            }
-            this._scheduleHide('dock-leave');
-            return Clutter.EVENT_PROPAGATE;
-        });
+            });
 
-        this._ensureLabelActor();
-        this._applyDockBackground();
+            this._ensureLabelActor();
+            this._applyDockBackground();
 
-        this._refreshInputRegion();
-        this._scheduleLayout();
+            this._refreshInputRegion();
+            this._scheduleLayout();
+        } catch (e) {
+        }
     }
 
     /**
@@ -1055,9 +1145,8 @@ export class ModuleDock {
     /**
      * @brief Close a window while keeping the context menu open
      * @param win The Meta.Window to close
-     * @param title The window title
      */
-    _closeWindowAndKeepMenu(win, title) {
+    _closeWindowAndKeepMenu(win) {
         this._recordMenuPos();
         let ok = false;
         try {
@@ -1089,8 +1178,11 @@ export class ModuleDock {
         }
         this._restoreMenuBottomPos();
         GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-            this._rebuildMenuWindowItems(appInfo, sourceActor, wasThumbnail);
-            this._restoreMenuBottomPos();
+            try {
+                this._rebuildMenuWindowItems(appInfo, sourceActor, wasThumbnail);
+                this._restoreMenuBottomPos();
+            } catch (e) {
+            }
             return GLib.SOURCE_REMOVE;
         });
     }
@@ -1106,65 +1198,68 @@ export class ModuleDock {
             return;
         }
 
-        const app = Shell.AppSystem.get_default().lookup_app(appInfo.get_id());
-        const windows = app ? this._getAppWindows(app) : [];
-        const nowThumbnail = windows.length > 0 && windows.length <= MENU_OPEN_THUMB_MAX;
-        const nowEmpty = windows.length === 0;
-
-        const needRebuild = nowEmpty ? !this._menuIsEmpty : (nowThumbnail !== wasThumbnail);
-        if (!needRebuild) {
-            return;
-        }
-
-        this._clearMenuWindowSignals();
         try {
-            this._menu.removeAll();
-        } catch (e) {
-            return;
-        }
+            const app = Shell.AppSystem.get_default().lookup_app(appInfo.get_id());
+            const windows = app ? this._getAppWindows(app) : [];
+            const nowThumbnail = windows.length > 0 && windows.length <= MENU_OPEN_THUMB_MAX;
+            const nowEmpty = windows.length === 0;
 
-        try {
-            if (windows.length > 0) {
-                const useThumbnails = windows.length <= MENU_OPEN_THUMB_MAX;
-                for (const w of windows) {
-                    const wi = useThumbnails
-                        ? this._createThumbnailWindowItem(w, appInfo, sourceActor)
-                        : this._createTextWindowItem(w, appInfo, sourceActor);
-                    this._menu.addMenuItem(wi);
+            const needRebuild = nowEmpty ? !this._menuIsEmpty : (nowThumbnail !== wasThumbnail);
+            if (!needRebuild) {
+                return;
+            }
+
+            this._clearMenuWindowSignals();
+            try {
+                this._menu.removeAll();
+            } catch (e) {
+                return;
+            }
+
+            try {
+                if (windows.length > 0) {
+                    const useThumbnails = windows.length <= MENU_OPEN_THUMB_MAX;
+                    for (const w of windows) {
+                        const wi = useThumbnails
+                            ? this._createThumbnailWindowItem(w, appInfo, sourceActor)
+                            : this._createTextWindowItem(w, appInfo, sourceActor);
+                        this._menu.addMenuItem(wi);
+                    }
+                    this._menu.addMenuItem(this._createMenuSeparator(MENU_CONTENT_PADDING_B));
+                    this._menuIsEmpty = false;
+                } else {
+                    this._menu.addMenuItem(this._createEmptyTextRow());
+                    this._menu.addMenuItem(this._createMenuSeparator());
+                    this._menuIsEmpty = true;
                 }
-                this._menu.addMenuItem(this._createMenuSeparator(MENU_CONTENT_PADDING_B));
-                this._menuIsEmpty = false;
-            } else {
-                this._menu.addMenuItem(this._createEmptyTextRow());
-                this._menu.addMenuItem(this._createMenuSeparator());
-                this._menuIsEmpty = true;
+
+                const newWindowItem = new PopupMenu.PopupMenuItem(_('New Window'));
+                newWindowItem.add_style_class_name('dock-menu-item');
+                newWindowItem.connect('activate', () => this._launchNewApp(appInfo));
+                this._menu.addMenuItem(newWindowItem);
+
+                const isFavorite = this._isFavorite(appInfo.get_id());
+                const pinItem = new PopupMenu.PopupMenuItem(isFavorite ? _('Unpin') : _('Pin'));
+                pinItem.add_style_class_name('dock-menu-item');
+                pinItem.connect('activate', () => this._toggleFavorite(appInfo));
+                this._menu.addMenuItem(pinItem);
+
+                if (app && windows.length > 0) {
+                    this._menu.addMenuItem(this._createMenuSeparator());
+
+                    const quitItem = new PopupMenu.PopupMenuItem(_('Quit'));
+                    quitItem.add_style_class_name('dock-menu-item');
+                    quitItem.connect('activate', () => this._quitApp(appInfo));
+                    this._menu.addMenuItem(quitItem);
+                }
+            } catch (e) {
+                return;
             }
 
-            const newWindowItem = new PopupMenu.PopupMenuItem(_('New Window'));
-            newWindowItem.add_style_class_name('dock-menu-item');
-            newWindowItem.connect('activate', () => this._launchNewApp(appInfo));
-            this._menu.addMenuItem(newWindowItem);
-
-            const isFavorite = this._isFavorite(appInfo.get_id());
-            const pinItem = new PopupMenu.PopupMenuItem(isFavorite ? _('Unpin') : _('Pin'));
-            pinItem.add_style_class_name('dock-menu-item');
-            pinItem.connect('activate', () => this._toggleFavorite(appInfo));
-            this._menu.addMenuItem(pinItem);
-
-            if (app && windows.length > 0) {
-                this._menu.addMenuItem(this._createMenuSeparator());
-
-                const quitItem = new PopupMenu.PopupMenuItem(_('Quit'));
-                quitItem.add_style_class_name('dock-menu-item');
-                quitItem.connect('activate', () => this._quitApp(appInfo));
-                this._menu.addMenuItem(quitItem);
-            }
+            this._applyMenuBackground(this._menu);
+            this._applyMenuSpacing(this._menu);
         } catch (e) {
-            return;
         }
-
-        this._applyMenuBackground(this._menu);
-        this._applyMenuSpacing(this._menu);
     }
 
     /**
@@ -1208,62 +1303,140 @@ export class ModuleDock {
     }
 
     /**
+     * @brief Return true if the given stage coordinates are inside the dock actor
+     * @param x Pointer X in stage coordinates
+     * @param y Pointer Y in stage coordinates
+     * @return True if inside the dock actor bounds
+     */
+    _isPointInDock(x, y) {
+        if (!this._dockBox) {
+            return false;
+        }
+        try {
+            const [bx, by] = this._dockBox.get_transformed_position();
+            const [bw, bh] = this._dockBox.get_transformed_size();
+            return x >= bx && x <= bx + bw && y >= by && y <= by + bh;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    /**
      * @brief Handle a drag over event on the dock
      * @param source The drag source object
      * @param actor The drag actor
-     * @param x Pointer X in stage coordinates
-     * @param y Pointer Y in stage coordinates
+     * @param x Local X in drop target coordinates
+     * @param y Local Y in drop target coordinates
      * @param time Event time
      * @return The drag motion result
      */
     _handleDragOver(source, actor, x, y, time) {
-        const appId = this._resolveDragAppId(source);
-        if (!appId) {
+        try {
+            const appId = this._resolveDragAppId(source);
+            const [px, py] = global.get_pointer();
+            const inDock = this._isPointInDock(px, py);
+
+            if (!appId) {
+                return DND.DragMotionResult.CONTINUE;
+            }
+
+            if (!this._isFavorite(appId)) {
+                return DND.DragMotionResult.CONTINUE;
+            }
+
+            this._dragInProgress = true;
+
+            if (!inDock) {
+                return DND.DragMotionResult.CONTINUE;
+            }
+
+            this._hideLabel();
+
+            this._dragActive = true;
+
+            const originalActor = this._iconActors.get(appId);
+            if (originalActor && originalActor !== this._dragOriginalActor) {
+                originalActor.set_opacity(128);
+                this._dragOriginalActor = originalActor;
+            }
+
+            const localX = this._getPointerXInDockLocal();
+            this._updateDragPosition(appId, localX);
+            return DND.DragMotionResult.MOVE_DROP;
+        } catch (e) {
             return DND.DragMotionResult.CONTINUE;
         }
-
-        this._hideLabel();
-
-        this._dragSourceAppId = appId;
-        this._dragActive = true;
-
-        const originalActor = this._iconActors.get(appId);
-        if (originalActor && originalActor !== this._dragOriginalActor) {
-            originalActor.set_opacity(128);
-            this._dragOriginalActor = originalActor;
-        }
-
-        const localX = this._getPointerXInDockLocal();
-        this._updateDragPosition(appId, localX);
-        return DND.DragMotionResult.MOVE_DROP;
     }
 
     /**
      * @brief Handle a drop event on the dock, saving the new order
      * @param source The drag source object
      * @param actor The drag actor
-     * @param x Pointer X in stage coordinates
-     * @param y Pointer Y in stage coordinates
+     * @param x Local X in drop target coordinates
+     * @param y Local Y in drop target coordinates
      * @param time Event time
      * @return True if the drop was accepted
      */
     _acceptDrop(source, actor, x, y, time) {
-        const appId = this._resolveDragAppId(source);
+        try {
+            if (this._dropHandled) {
+                return false;
+            }
+            this._dropHandled = true;
+            this._cancelDragTimeout();
 
-        if (this._dragOriginalActor) {
-            this._dragOriginalActor.set_opacity(255);
-            this._dragOriginalActor = null;
-        }
-        if (!appId) {
+            this._dragInProgress = false;
+
+            if (this._dragOriginalActor) {
+                this._dragOriginalActor.set_opacity(255);
+                this._dragOriginalActor = null;
+            }
+
+            const appId = this._resolveDragAppId(source);
+            if (!appId) {
+                this._resetDragState();
+                return false;
+            }
+
+            if (!this._isFavorite(appId)) {
+                this._resetDragState();
+                return false;
+            }
+
+            const [px, py] = global.get_pointer();
+            const inDock = this._isPointInDock(px, py);
+
+            if (!inDock) {
+                this._resetDragState();
+                GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                    try {
+                        if (this._dockBox) {
+                            this._refreshDockItems();
+                        }
+                    } catch (e) {
+                    }
+                    return GLib.SOURCE_REMOVE;
+                });
+                return false;
+            }
+
+            const beforeId = this._computeBeforeIdFromLayout(appId);
+            this._saveOrderBefore(appId, beforeId);
             this._resetDragState();
+            GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                try {
+                    if (this._dockBox) {
+                        this._refreshDockItems();
+                    }
+                } catch (e) {
+                }
+                return GLib.SOURCE_REMOVE;
+            });
+            return true;
+        } catch (e) {
+            this._dragInProgress = false;
             return false;
         }
-
-        const beforeId = this._computeBeforeIdFromLayout(appId);
-        this._saveOrderBefore(appId, beforeId);
-        this._resetDragState();
-        this._rebuildIcons();
-        return true;
     }
 
     /**
@@ -1275,39 +1448,60 @@ export class ModuleDock {
         if (!this._dockBox) {
             return;
         }
-        const draggingActor = this._iconActors.get(appId);
-        if (!draggingActor) {
-            return;
-        }
+        try {
+            const draggingActor = this._iconActors.get(appId);
+            if (!draggingActor) {
+                return;
+            }
 
-        const children = this._dockBox.get_children();
-        const dragPhysIdx = children.indexOf(draggingActor);
-        if (dragPhysIdx < 0) {
-            return;
-        }
+            const children = this._dockBox.get_children();
+            const dragPhysIdx = children.indexOf(draggingActor);
+            if (dragPhysIdx < 0) {
+                return;
+            }
 
-        const [dockStageX] = this._dockBox.get_transformed_position();
+            const [dockStageX] = this._dockBox.get_transformed_position();
 
-        if (dragPhysIdx > 0) {
-            const leftActor = children[dragPhysIdx - 1];
-            if (this._isFavoriteActor(leftActor) && leftActor !== draggingActor) {
-                const [lx] = leftActor.get_transformed_position();
-                if (mouseX < lx - dockStageX) {
-                    this._dockBox.set_child_at_index(draggingActor, dragPhysIdx - 1);
-                    return;
+            const items = [];
+            for (const child of children) {
+                if (!this._isFavoriteActor(child) || child === draggingActor) {
+                    continue;
+                }
+                const id = this._getAppIdForActor(child);
+                if (!id) {
+                    continue;
+                }
+                const [cx] = child.get_transformed_position();
+                const [cw] = child.get_transformed_size();
+                const left = cx - dockStageX;
+                items.push({ actor: child, appId: id, left, right: left + cw, center: left + cw / 2 });
+            }
+            items.sort((a, b) => a.left - b.left);
+
+            let targetIndex = items.length > 0
+                ? children.indexOf(items[items.length - 1].actor) + 1
+                : children.indexOf(draggingActor);
+
+            for (let i = 0; i < items.length; i++) {
+                const it = items[i];
+                if (mouseX < it.left) {
+                    targetIndex = children.indexOf(it.actor);
+                    break;
+                }
+                if (mouseX <= it.right) {
+                    targetIndex = mouseX <= it.center
+                        ? children.indexOf(it.actor)
+                        : children.indexOf(it.actor) + 1;
+                    break;
                 }
             }
-        }
-        if (dragPhysIdx < children.length - 1) {
-            const rightActor = children[dragPhysIdx + 1];
-            if (this._isFavoriteActor(rightActor) && rightActor !== draggingActor) {
-                const [rx] = rightActor.get_transformed_position();
-                const [rw] = rightActor.get_transformed_size();
-                if (mouseX > (rx - dockStageX) + rw) {
-                    this._dockBox.set_child_at_index(draggingActor, dragPhysIdx + 1);
-                    return;
-                }
+
+            const currentIdx = children.indexOf(draggingActor);
+            if (currentIdx !== targetIndex && targetIndex >= 0) {
+                const insertIdx = targetIndex > currentIdx ? targetIndex - 1 : targetIndex;
+                this._dockBox.set_child_at_index(draggingActor, insertIdx);
             }
+        } catch (e) {
         }
     }
 
@@ -1320,55 +1514,41 @@ export class ModuleDock {
         if (!this._dockBox) {
             return null;
         }
-        const [dockStageX] = this._dockBox.get_transformed_position();
-        const children = this._dockBox.get_children();
+        try {
+            const [dockStageX] = this._dockBox.get_transformed_position();
+            const children = this._dockBox.get_children();
 
-        const dragActor = this._iconActors.get(excludeAppId);
-        if (!dragActor) {
-            return null;
-        }
-        const [dx] = dragActor.get_transformed_position();
-        const dragCenter = (dx - dockStageX) + this._getActorWidth(dragActor) / 2;
+            const [px] = global.get_pointer();
+            const dragCenter = px - dockStageX;
 
-        const items = [];
-        for (const child of children) {
-            if (!this._isFavoriteActor(child)) {
-                continue;
+            const items = [];
+            for (const child of children) {
+                if (!this._isFavoriteActor(child)) {
+                    continue;
+                }
+                const id = this._getAppIdForActor(child);
+                if (!id || id === excludeAppId) {
+                    continue;
+                }
+                const [cx] = child.get_transformed_position();
+                const [cw] = child.get_transformed_size();
+                const left = cx - dockStageX;
+                items.push({ appId: id, left, right: left + cw, center: left + cw / 2 });
             }
-            const id = this._getAppIdForActor(child);
-            if (!id || id === excludeAppId) {
-                continue;
-            }
-            const [cx] = child.get_transformed_position();
-            const [cw] = child.get_transformed_size();
-            const left = cx - dockStageX;
-            items.push({ appId: id, left, right: left + cw, center: left + cw / 2 });
-        }
-        items.sort((a, b) => a.left - b.left);
+            items.sort((a, b) => a.left - b.left);
 
-        for (const it of items) {
-            if (dragCenter < it.left) {
-                return it.appId;
+            for (let i = 0; i < items.length; i++) {
+                const it = items[i];
+                if (dragCenter < it.left) {
+                    return it.appId;
+                }
+                if (dragCenter <= it.right) {
+                    return i + 1 < items.length ? items[i + 1].appId : null;
+                }
             }
-            if (dragCenter <= it.right) {
-                return dragCenter <= it.center ? it.appId : null;
-            }
+        } catch (e) {
         }
         return null;
-    }
-
-    /**
-     * @brief Get the transformed width of an actor, falling back to item size
-     * @param actor The actor to measure
-     * @return The transformed width in pixels
-     */
-    _getActorWidth(actor) {
-        try {
-            const [, w] = actor.get_transformed_size();
-            return w || this._itemSize;
-        } catch (e) {
-            return this._itemSize;
-        }
     }
 
     /**
@@ -1377,37 +1557,37 @@ export class ModuleDock {
      * @param beforeId The app id before which it was dropped, or null
      */
     _saveOrderBefore(appId, beforeId) {
-        const favoriteIds = this._getFavoriteIds();
-        const normalize = (id) => (id || '').toLowerCase().replace(/\.desktop$/, '');
-        const target = normalize(appId);
-
-        let removeIndex = -1;
-        let actualId = appId;
-        for (let i = 0; i < favoriteIds.length; i++) {
-            if (normalize(favoriteIds[i]) === target) {
-                actualId = favoriteIds[i];
-                removeIndex = i;
-                break;
-            }
-        }
-        if (removeIndex === -1) {
-            return;
-        }
-
-        favoriteIds.splice(removeIndex, 1);
-        let finalIdx;
-        if (beforeId === null) {
-            finalIdx = favoriteIds.length;
-        } else {
-            const beforeNorm = normalize(beforeId);
-            finalIdx = favoriteIds.findIndex(id => normalize(id) === beforeNorm);
-            if (finalIdx === -1) {
-                finalIdx = favoriteIds.length;
-            }
-        }
-        favoriteIds.splice(finalIdx, 0, actualId);
-
         try {
+            const favoriteIds = this._getFavoriteIds();
+            const normalize = (id) => (id || '').toLowerCase().replace(/\.desktop$/, '');
+            const target = normalize(appId);
+
+            let removeIndex = -1;
+            let actualId = appId;
+            for (let i = 0; i < favoriteIds.length; i++) {
+                if (normalize(favoriteIds[i]) === target) {
+                    actualId = favoriteIds[i];
+                    removeIndex = i;
+                    break;
+                }
+            }
+            if (removeIndex === -1) {
+                return;
+            }
+
+            favoriteIds.splice(removeIndex, 1);
+            let finalIdx;
+            if (beforeId === null) {
+                finalIdx = favoriteIds.length;
+            } else {
+                const beforeNorm = normalize(beforeId);
+                finalIdx = favoriteIds.findIndex(id => normalize(id) === beforeNorm);
+                if (finalIdx === -1) {
+                    finalIdx = favoriteIds.length;
+                }
+            }
+            favoriteIds.splice(finalIdx, 0, actualId);
+
             const schemaSource = Gio.SettingsSchemaSource.get_default();
             const schema = schemaSource.lookup('org.gnome.shell', true);
             if (schema) {
@@ -1437,7 +1617,27 @@ export class ModuleDock {
      */
     _resetDragState() {
         this._dragActive = false;
-        this._dragSourceAppId = null;
+        this._dragInProgress = false;
+        this._cancelDragTimeout();
+    }
+
+    /**
+     * @brief Flush a refresh that was deferred because a drag was active
+     */
+    _flushPendingRefreshAfterDrag() {
+        if (!this._refreshPendingAfterDrag) {
+            return;
+        }
+        this._refreshPendingAfterDrag = false;
+        GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+            try {
+                if (this._dockBox) {
+                    this._refreshDockItems();
+                }
+            } catch (e) {
+            }
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     /**
@@ -1465,97 +1665,127 @@ export class ModuleDock {
             return;
         }
 
-        if (this._inOverview) {
-            this._dockBox.translation_y = 0;
+        try {
+            if (this._inOverview) {
+                this._dockBox.translation_y = 0;
+                this._dockBox.queue_relayout();
+                if (this._labelActor?.visible && !this._showing) {
+                    this._positionLabel();
+                }
+                this._scheduleUpdateIconGeometries();
+                return;
+            }
+
+            const monitor = Main.layoutManager.primaryMonitor;
+            if (!monitor) {
+                return;
+            }
+
+            const y = monitor.y + monitor.height - this._dockHeight - DOCK_SIZE_EDGE_GAP;
+            const newTy = this._visible ? 0 : (this._dockHeight + DOCK_SIZE_EDGE_GAP);
+            this._dockBox.set_height(this._dockHeight);
+            this._dockBox.set_y(y);
+
+            if (Math.abs(this._dockBox.translation_y - newTy) > 0.5) {
+                this._dockBox.translation_y = newTy;
+                this._refreshInputRegion();
+            }
             this._dockBox.queue_relayout();
+
             if (this._labelActor?.visible && !this._showing) {
                 this._positionLabel();
             }
+
             this._scheduleUpdateIconGeometries();
-            return;
+        } catch (e) {
         }
-
-        const monitor = Main.layoutManager.primaryMonitor;
-        if (!monitor) {
-            return;
-        }
-
-        const y = monitor.y + monitor.height - this._dockHeight - DOCK_SIZE_EDGE_GAP;
-        const newTy = this._visible ? 0 : (this._dockHeight + DOCK_SIZE_EDGE_GAP);
-        this._dockBox.set_height(this._dockHeight);
-        this._dockBox.set_y(y);
-
-        if (Math.abs(this._dockBox.translation_y - newTy) > 0.5) {
-            this._dockBox.translation_y = newTy;
-            this._refreshInputRegion();
-        }
-        this._dockBox.queue_relayout();
-
-        if (this._labelActor?.visible && !this._showing) {
-            this._positionLabel();
-        }
-
-        this._scheduleUpdateIconGeometries();
     }
 
     /**
      * @brief Connect monitor, favorites, app state and window signals
      */
     _connectMonitor() {
-        if (!this._appInfoMonitorId) {
-            this._appInfoMonitorId = Gio.AppInfoMonitor.get().connect('changed', () => {
-                this._scheduleRefreshDockItems();
-            });
-        }
-        if (!this._favoritesChangedId) {
-            this._favoritesChangedId = AppFavorites.getAppFavorites().connect('changed', () => {
-                this._rebuildIcons();
-            });
-        }
-        if (!this._shellAppStateId) {
-            this._shellAppStateId = Shell.AppSystem.get_default().connect('app-state-changed', () => {
-                this._scheduleRefreshDockItems();
-            });
-        }
-        if (!this._windowsChangedId) {
-            this._windowsChangedId = global.display.connect('window-created', () => {
-                this._scheduleRefreshDockItems();
-                this._syncDockVisibility('window-created');
-            });
-            this._wmDestroyId = global.window_manager.connect('kill-window-effects', () => {
-                this._scheduleRefreshDockItems();
-                this._syncDockVisibility('kill-window-effects');
-            });
-        }
-        if (!this._windowPositionChangedId) {
-            try {
-                this._windowPositionChangedId = global.display.connect('window-position-changed', () => {
-                    this._syncDockVisibility('window-position-changed');
+        try {
+            if (!this._appInfoMonitorId) {
+                this._appInfoMonitorId = Gio.AppInfoMonitor.get().connect('changed', () => {
+                    try {
+                        this._scheduleRefreshDockItems();
+                    } catch (e) {
+                    }
                 });
-            } catch (e) {
-                this._windowPositionChangedId = null;
             }
-        }
-        if (!this._windowSizeChangedId) {
-            try {
-                this._windowSizeChangedId = global.display.connect('window-size-changed', () => {
-                    this._syncDockVisibility('window-size-changed');
+            if (!this._favoritesChangedId) {
+                this._favoritesChangedId = AppFavorites.getAppFavorites().connect('changed', () => {
+                    try {
+                        this._rebuildIcons();
+                    } catch (e) {
+                    }
                 });
-            } catch (e) {
-                this._windowSizeChangedId = null;
             }
-        }
-        if (!this._activeWorkspaceChangedId) {
-            try {
-                this._activeWorkspaceChangedId = global.workspace_manager.connect('active-workspace-changed', () => {
-                    this._windowCycleHistory.clear();
-                    this._windowCycleCursor.clear();
-                    this._syncDockVisibility('active-workspace-changed');
-                    this._scheduleRefreshDockItems();
+            if (!this._shellAppStateId) {
+                this._shellAppStateId = Shell.AppSystem.get_default().connect('app-state-changed', () => {
+                    try {
+                        this._scheduleRefreshDockItems();
+                    } catch (e) {
+                    }
                 });
-            } catch (e) {
-                this._activeWorkspaceChangedId = null;
             }
+            if (!this._windowsChangedId) {
+                this._windowsChangedId = global.display.connect('window-created', () => {
+                    try {
+                        this._scheduleRefreshDockItems();
+                        this._syncDockVisibility();
+                    } catch (e) {
+                    }
+                });
+                this._wmDestroyId = global.window_manager.connect('kill-window-effects', () => {
+                    try {
+                        this._scheduleRefreshDockItems();
+                        this._syncDockVisibility();
+                    } catch (e) {
+                    }
+                });
+            }
+            if (!this._windowPositionChangedId) {
+                try {
+                    this._windowPositionChangedId = global.display.connect('window-position-changed', () => {
+                        try {
+                            this._syncDockVisibility();
+                        } catch (e) {
+                        }
+                    });
+                } catch (e) {
+                    this._windowPositionChangedId = null;
+                }
+            }
+            if (!this._windowSizeChangedId) {
+                try {
+                    this._windowSizeChangedId = global.display.connect('window-size-changed', () => {
+                        try {
+                            this._syncDockVisibility();
+                        } catch (e) {
+                        }
+                    });
+                } catch (e) {
+                    this._windowSizeChangedId = null;
+                }
+            }
+            if (!this._activeWorkspaceChangedId) {
+                try {
+                    this._activeWorkspaceChangedId = global.workspace_manager.connect('active-workspace-changed', () => {
+                        try {
+                            this._windowCycleHistory.clear();
+                            this._windowCycleCursor.clear();
+                            this._syncDockVisibility();
+                            this._scheduleRefreshDockItems();
+                        } catch (e) {
+                        }
+                    });
+                } catch (e) {
+                    this._activeWorkspaceChangedId = null;
+                }
+            }
+        } catch (e) {
         }
     }
 
@@ -1633,7 +1863,10 @@ export class ModuleDock {
             if (!this._settings) {
                 return GLib.SOURCE_REMOVE;
             }
-            this._refreshDockItems();
+            try {
+                this._refreshDockItems();
+            } catch (e) {
+            }
             return GLib.SOURCE_REMOVE;
         });
     }
@@ -1666,66 +1899,68 @@ export class ModuleDock {
 
     /**
      * @brief Return true if any window covers the dock's screen area
-     * @param reason Optional reason string for logging
      * @return True if the dock area is covered by a window
      */
-    _isDockAreaCovered(reason = '') {
+    _isDockAreaCovered() {
         if (!this._dockBox) {
             return false;
         }
 
-        const monitor = Main.layoutManager.primaryMonitor;
-        if (!monitor) {
-            return false;
-        }
-
-        const dockTop = monitor.y + monitor.height - this._dockHeight - DOCK_SIZE_EDGE_GAP;
-        const dockBottom = monitor.y + monitor.height;
-        const dockLeft = monitor.x;
-        const dockRight = monitor.x + monitor.width;
-
-        const activeWorkspace = this._getActiveWorkspace();
-
-        for (const actor of global.get_window_actors()) {
-            const win = actor.meta_window;
-            if (!win) {
-                continue;
+        try {
+            const monitor = Main.layoutManager.primaryMonitor;
+            if (!monitor) {
+                return false;
             }
-            try {
-                if (win.get_window_type() !== Meta.WindowType.NORMAL) {
+
+            const dockTop = monitor.y + monitor.height - this._dockHeight - DOCK_SIZE_EDGE_GAP;
+            const dockBottom = monitor.y + monitor.height;
+            const dockLeft = monitor.x;
+            const dockRight = monitor.x + monitor.width;
+
+            const activeWorkspace = this._getActiveWorkspace();
+
+            for (const actor of global.get_window_actors()) {
+                const win = actor.meta_window;
+                if (!win) {
                     continue;
                 }
-                if (win.is_skip_taskbar()) {
-                    continue;
-                }
-                if (win.minimized) {
-                    continue;
-                }
-                if (activeWorkspace && !win.is_on_all_workspaces()) {
-                    const winWs = win.get_workspace();
-                    if (winWs && winWs !== activeWorkspace) {
+                try {
+                    if (win.get_window_type() !== Meta.WindowType.NORMAL) {
                         continue;
                     }
+                    if (win.is_skip_taskbar()) {
+                        continue;
+                    }
+                    if (win.minimized) {
+                        continue;
+                    }
+                    if (activeWorkspace && !win.is_on_all_workspaces()) {
+                        const winWs = win.get_workspace();
+                        if (winWs && winWs !== activeWorkspace) {
+                            continue;
+                        }
+                    }
+                } catch (e) {
+                    continue;
                 }
-            } catch (e) {
-                continue;
-            }
 
-            let frame;
-            try {
-                frame = win.get_frame_rect();
-            } catch (e) {
-                continue;
-            }
-            if (!frame || frame.width <= 0 || frame.height <= 0) {
-                continue;
-            }
+                let frame;
+                try {
+                    frame = win.get_frame_rect();
+                } catch (e) {
+                    continue;
+                }
+                if (!frame || frame.width <= 0 || frame.height <= 0) {
+                    continue;
+                }
 
-            const overlapX = Math.min(frame.x + frame.width, dockRight) - Math.max(frame.x, dockLeft);
-            const overlapY = Math.min(frame.y + frame.height, dockBottom) - Math.max(frame.y, dockTop);
-            if (overlapX > 0 && overlapY > 0) {
-                return true;
+                const overlapX = Math.min(frame.x + frame.width, dockRight) - Math.max(frame.x, dockLeft);
+                const overlapY = Math.min(frame.y + frame.height, dockBottom) - Math.max(frame.y, dockTop);
+                if (overlapX > 0 && overlapY > 0) {
+                    return true;
+                }
             }
+        } catch (e) {
         }
 
         return false;
@@ -1733,9 +1968,8 @@ export class ModuleDock {
 
     /**
      * @brief Sync dock visibility with the current occlusion state
-     * @param reason Short tag describing the caller, for logging
      */
-    _syncDockVisibility(reason = '') {
+    _syncDockVisibility() {
         if (!this._dockBox || !this._settings) {
             return;
         }
@@ -1749,26 +1983,29 @@ export class ModuleDock {
             return;
         }
 
-        const covered = this._isDockAreaCovered(`sync:${reason}`);
+        try {
+            const covered = this._isDockAreaCovered();
 
-        if (!covered) {
-            this._cancelHide();
-            if (!this._visible) {
-                this._showDock(`sync:${reason}`);
+            if (!covered) {
+                this._cancelHide();
+                if (!this._visible) {
+                    this._showDock();
+                } else {
+                    this._dockBox.reactive = true;
+                    if (Math.abs(this._dockBox.translation_y) > 0.5) {
+                        this._dockBox.remove_all_transitions();
+                        this._dockBox.translation_y = 0;
+                        this._refreshInputRegion();
+                        this._scheduleLayout();
+                    }
+                }
             } else {
-                this._dockBox.reactive = true;
-                if (Math.abs(this._dockBox.translation_y) > 0.5) {
-                    this._dockBox.remove_all_transitions();
-                    this._dockBox.translation_y = 0;
-                    this._refreshInputRegion();
-                    this._scheduleLayout();
+                const [x, y] = global.get_pointer();
+                if (!this._pointerInDock(x, y) && !this._isMenuOpen() && !this._isTrashMenuOpen() && !this._dragActive && !this._dragInProgress) {
+                    this._scheduleHide();
                 }
             }
-        } else {
-            const [x, y] = global.get_pointer();
-            if (!this._pointerInDock(x, y) && !this._isMenuOpen() && !this._isTrashMenuOpen() && !this._dragActive) {
-                this._scheduleHide(`sync:${reason}`);
-            }
+        } catch (e) {
         }
     }
 
@@ -1797,7 +2034,7 @@ export class ModuleDock {
             return GLib.SOURCE_CONTINUE;
         }
 
-        this._syncDockVisibility('tick');
+        this._syncDockVisibility();
 
         const [x, y] = global.get_pointer();
         const monitor = Main.layoutManager.primaryMonitor;
@@ -1826,14 +2063,14 @@ export class ModuleDock {
             if (this._hotZoneEnterTime === 0) {
                 this._hotZoneEnterTime = now;
             } else if ((now - this._hotZoneEnterTime) / 1000 >= DOCK_HOT_ZONE_DELAY) {
-                this._showDock('hot-dwell');
+                this._showDock();
                 this._isAtBottom = false;
                 this._hotZoneEnterTime = 0;
                 return GLib.SOURCE_CONTINUE;
             }
 
             if (velocity > DOCK_HOT_ZONE_SPEED) {
-                this._showDock('hot-speed');
+                this._showDock();
                 this._isAtBottom = false;
                 this._hotZoneEnterTime = 0;
             } else {
@@ -1841,7 +2078,7 @@ export class ModuleDock {
                     this._isAtBottom = true;
                     this._bottomStartX = x;
                 } else if (Math.abs(x - this._bottomStartX) >= horizontalTriggerDist) {
-                    this._showDock('hot-horizontal');
+                    this._showDock();
                     this._isAtBottom = false;
                     this._hotZoneEnterTime = 0;
                 }
@@ -1849,14 +2086,14 @@ export class ModuleDock {
         } else if (!inHotZone && !inDockArea) {
             this._isAtBottom = false;
             this._hotZoneEnterTime = 0;
-            if (this._isDockAreaCovered('tick-hidecheck')) {
+            if (this._isDockAreaCovered()) {
                 if (this._visible) {
-                    this._scheduleHide('tick');
+                    this._scheduleHide();
                 }
             } else {
                 this._cancelHide();
                 if (!this._visible) {
-                    this._showDock('tick-autoshow');
+                    this._showDock();
                 }
             }
         }
@@ -1880,44 +2117,47 @@ export class ModuleDock {
      * @return True if the pointer is inside the dock or menu area
      */
     _pointerInDock(x, y) {
-        if (this._dockBox && this._visible) {
-            const [bx, by] = this._dockBox.get_transformed_position();
+        try {
+            if (this._dockBox && this._visible) {
+                const [bx, by] = this._dockBox.get_transformed_position();
 
-            const monitor = Main.layoutManager.findMonitorForActor(this._dockBox);
-            if (monitor) {
-                const topY = by;
-                const bottomY = monitor.y + monitor.height;
-                const leftX = monitor.x;
-                const rightX = monitor.x + monitor.width;
+                const monitor = Main.layoutManager.findMonitorForActor(this._dockBox);
+                if (monitor) {
+                    const topY = by;
+                    const bottomY = monitor.y + monitor.height;
+                    const leftX = monitor.x;
+                    const rightX = monitor.x + monitor.width;
 
-                if (x >= leftX && x <= rightX && y >= topY && y <= bottomY) {
-                    return true;
+                    if (x >= leftX && x <= rightX && y >= topY && y <= bottomY) {
+                        return true;
+                    }
                 }
             }
-        }
 
-        if (this._menu && this._menu.actor) {
-            try {
-                const [mx, my] = this._menu.actor.get_transformed_position();
-                const [mw, mh] = this._menu.actor.get_transformed_size();
-                if (mw > 0 && mh > 0 &&
-                    x >= mx && x <= mx + mw && y >= my && y <= my + mh) {
-                    return true;
+            if (this._menu && this._menu.actor) {
+                try {
+                    const [mx, my] = this._menu.actor.get_transformed_position();
+                    const [mw, mh] = this._menu.actor.get_transformed_size();
+                    if (mw > 0 && mh > 0 &&
+                        x >= mx && x <= mx + mw && y >= my && y <= my + mh) {
+                        return true;
+                    }
+                } catch (e) {
                 }
-            } catch (e) {
             }
-        }
 
-        if (this._trashMenu && this._trashMenu.actor) {
-            try {
-                const [mx, my] = this._trashMenu.actor.get_transformed_position();
-                const [mw, mh] = this._trashMenu.actor.get_transformed_size();
-                if (mw > 0 && mh > 0 &&
-                    x >= mx && x <= mx + mw && y >= my && y <= my + mh) {
-                    return true;
+            if (this._trashMenu && this._trashMenu.actor) {
+                try {
+                    const [mx, my] = this._trashMenu.actor.get_transformed_position();
+                    const [mw, mh] = this._trashMenu.actor.get_transformed_size();
+                    if (mw > 0 && mh > 0 &&
+                        x >= mx && x <= mx + mw && y >= my && y <= my + mh) {
+                        return true;
+                    }
+                } catch (e) {
                 }
-            } catch (e) {
             }
+        } catch (e) {
         }
 
         return false;
@@ -1925,37 +2165,39 @@ export class ModuleDock {
 
     /**
      * @brief Schedule hiding the dock after the configured delay
-     * @param reason Short tag describing the caller, for logging
      */
-    _scheduleHide(reason = '') {
+    _scheduleHide() {
         if (this._inOverview) {
             return;
         }
         if (this._isMenuOpen() || this._isTrashMenuOpen()) {
             return;
         }
-        if (!this._visible || this._hideTimeoutId || this._dragActive) {
+        if (!this._visible || this._hideTimeoutId || this._dragActive || this._dragInProgress) {
             return;
         }
-        if (!this._isDockAreaCovered(`scheduleHide-entry:${reason}`)) {
+        if (!this._isDockAreaCovered()) {
             return;
         }
         this._hideTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, DOCK_HIDE_DELAY_MS, () => {
             this._hideTimeoutId = null;
-            if (this._inOverview) {
-                return GLib.SOURCE_REMOVE;
+            try {
+                if (this._inOverview) {
+                    return GLib.SOURCE_REMOVE;
+                }
+                if (this._isMenuOpen() || this._isTrashMenuOpen()) {
+                    return GLib.SOURCE_REMOVE;
+                }
+                const [x, y] = global.get_pointer();
+                if (this._pointerInDock(x, y) || this._dragActive || this._dragInProgress) {
+                    return GLib.SOURCE_REMOVE;
+                }
+                if (!this._isDockAreaCovered()) {
+                    return GLib.SOURCE_REMOVE;
+                }
+                this._hideDock();
+            } catch (e) {
             }
-            if (this._isMenuOpen() || this._isTrashMenuOpen()) {
-                return GLib.SOURCE_REMOVE;
-            }
-            const [x, y] = global.get_pointer();
-            if (this._pointerInDock(x, y) || this._dragActive) {
-                return GLib.SOURCE_REMOVE;
-            }
-            if (!this._isDockAreaCovered(`scheduleHide-timeout:${reason}`)) {
-                return GLib.SOURCE_REMOVE;
-            }
-            this._hideDock(`timeout:${reason}`);
             return GLib.SOURCE_REMOVE;
         });
     }
@@ -1972,50 +2214,51 @@ export class ModuleDock {
 
     /**
      * @brief Show the dock immediately without animation
-     * @param reason Short tag describing the caller, for logging
      */
-    _showDock(reason = '') {
+    _showDock() {
         if (!this._dockBox || this._visible) {
             return;
         }
 
-        this._hideLabel();
-
-        this._visible = true;
         try {
-            this._dockBox.reactive = true;
-        } catch (e) {
-        }
+            this._hideLabel();
 
-        this._ensureMousePoll();
-
-        const monitor = Main.layoutManager.primaryMonitor;
-        if (!monitor) {
-            this._visible = false;
-            this._dockBox.translation_y = this._dockHeight + DOCK_SIZE_EDGE_GAP;
+            this._visible = true;
             try {
-                this._dockBox.reactive = false;
+                this._dockBox.reactive = true;
             } catch (e) {
             }
+
+            this._ensureMousePoll();
+
+            const monitor = Main.layoutManager.primaryMonitor;
+            if (!monitor) {
+                this._visible = false;
+                this._dockBox.translation_y = this._dockHeight + DOCK_SIZE_EDGE_GAP;
+                try {
+                    this._dockBox.reactive = false;
+                } catch (e) {
+                }
+                this._refreshInputRegion();
+                return;
+            }
+
+            this._dockBox.remove_all_transitions();
+            this._dockBox.translation_y = 0;
+            this._dockBox.queue_relayout();
             this._refreshInputRegion();
-            return;
+
+            this._scheduleUpdateIconGeometries();
+            this._restoreHoveredLabel();
+            this._ensureMousePoll();
+        } catch (e) {
         }
-
-        this._dockBox.remove_all_transitions();
-        this._dockBox.translation_y = 0;
-        this._dockBox.queue_relayout();
-        this._refreshInputRegion();
-
-        this._scheduleUpdateIconGeometries();
-        this._restoreHoveredLabel();
-        this._ensureMousePoll();
     }
 
     /**
      * @brief Hide the dock immediately without animation
-     * @param reason Short tag describing the caller, for logging
      */
-    _hideDock(reason = '') {
+    _hideDock() {
         this._cancelHide();
         this._hideLabel();
         this._closeTrashMenu();
@@ -2028,29 +2271,36 @@ export class ModuleDock {
         if (this._inOverview) {
             return;
         }
-        if (!this._isDockAreaCovered(`hideDock:${reason}`)) {
+        if (this._dragActive || this._dragInProgress) {
             return;
         }
-        this._visible = false;
-        try {
-            this._dockBox.reactive = false;
-        } catch (e) {
+        if (!this._isDockAreaCovered()) {
+            return;
         }
 
-        const endTy = this._dockHeight + DOCK_SIZE_EDGE_GAP;
+        try {
+            this._visible = false;
+            try {
+                this._dockBox.reactive = false;
+            } catch (e) {
+            }
 
-        this._dockBox.remove_all_transitions();
-        this._dockBox.translation_y = endTy;
-        this._dockBox.queue_relayout();
-        this._refreshInputRegion();
+            const endTy = this._dockHeight + DOCK_SIZE_EDGE_GAP;
 
-        this._scheduleLayout();
-        this._scheduleUpdateIconGeometries();
-        this._ensureMousePoll();
+            this._dockBox.remove_all_transitions();
+            this._dockBox.translation_y = endTy;
+            this._dockBox.queue_relayout();
+            this._refreshInputRegion();
+
+            this._scheduleLayout();
+            this._scheduleUpdateIconGeometries();
+            this._ensureMousePoll();
+        } catch (e) {
+        }
     }
 
     /**
-     * @brief Create the separator actor used between favorites and running apps
+     * @brief Create the separator actor used between the trash and running apps
      * @return A new St.Widget used as the run separator
      */
     _createRunSeparator() {
@@ -2087,55 +2337,68 @@ export class ModuleDock {
         if (!this._dockBox) {
             return;
         }
-        this._hideLabel();
-        this._resetDragState();
-        this._closeTrashMenu();
 
-        for (const child of [...this._dockBox.get_children()]) {
-            child.destroy();
-        }
-        this._iconActors.clear();
+        try {
+            this._hideLabel();
+            this._resetDragState();
+            this._closeTrashMenu();
 
-        const showAppsBtn = this._createShowAppsButton();
-        this._dockBox.add_child(showAppsBtn);
-
-        const sep = new St.Widget({ style_class: 'dock-bar-separator', y_expand: true, x_align: Clutter.ActorAlign.CENTER });
-        this._dockBox.add_child(sep);
-
-        const favorites = this._collectFavorites();
-        const favoriteIds = new Set(favorites.map(info => info.get_id()));
-        for (const appInfo of favorites) {
-            const item = this._createDockItem(appInfo);
-            this._dockBox.add_child(item);
-            this._iconActors.set(appInfo.get_id(), item);
-        }
-
-        const runningApps = Shell.AppSystem.get_default().get_running();
-        const unpinnedRunning = [];
-        for (const app of runningApps) {
-            const info = app.get_app_info() || Gio.DesktopAppInfo.new(app.get_id());
-            if (info && !favoriteIds.has(info.get_id())) {
-                unpinnedRunning.push(info);
+            for (const child of [...this._dockBox.get_children()]) {
+                try {
+                    child.destroy();
+                } catch (e) {
+                }
             }
+            this._iconActors.clear();
+
+            const showAppsBtn = this._createShowAppsButton();
+            this._dockBox.add_child(showAppsBtn);
+
+            const sep = new St.Widget({ style_class: 'dock-bar-separator', y_expand: true, x_align: Clutter.ActorAlign.CENTER });
+            this._dockBox.add_child(sep);
+
+            const favorites = this._collectFavorites();
+            const favoriteIds = new Set(favorites.map(info => info.get_id()));
+            for (const appInfo of favorites) {
+                const item = this._createDockItem(appInfo);
+                if (!item) {
+                    continue;
+                }
+                this._dockBox.add_child(item);
+                this._iconActors.set(appInfo.get_id(), item);
+            }
+
+            this._dockBox.add_child(this._createTrashSeparator());
+            this._trashBox = this._createTrashItem();
+            this._dockBox.add_child(this._trashBox);
+
+            const runningApps = Shell.AppSystem.get_default().get_running();
+            const unpinnedRunning = [];
+            for (const app of runningApps) {
+                const info = app.get_app_info() || Gio.DesktopAppInfo.new(app.get_id());
+                if (info && !favoriteIds.has(info.get_id())) {
+                    unpinnedRunning.push(info);
+                }
+            }
+
+            if (unpinnedRunning.length > 0) {
+                this._dockBox.add_child(this._createRunSeparator());
+            }
+
+            for (const info of unpinnedRunning) {
+                const item = this._createDockItem(info);
+                if (!item) {
+                    continue;
+                }
+                this._dockBox.add_child(item);
+                this._iconActors.set(info.get_id(), item);
+            }
+
+            this._scheduleLayout();
+            this._scheduleUpdateIconGeometries();
+            this._refreshInputRegion();
+        } catch (e) {
         }
-
-        if (unpinnedRunning.length > 0) {
-            this._dockBox.add_child(this._createRunSeparator());
-        }
-
-        for (const info of unpinnedRunning) {
-            const item = this._createDockItem(info);
-            this._dockBox.add_child(item);
-            this._iconActors.set(info.get_id(), item);
-        }
-
-        this._dockBox.add_child(this._createTrashSeparator());
-        this._trashBox = this._createTrashItem();
-        this._dockBox.add_child(this._trashBox);
-
-        this._scheduleLayout();
-        this._scheduleUpdateIconGeometries();
-        this._refreshInputRegion();
     }
 
     /**
@@ -2148,65 +2411,85 @@ export class ModuleDock {
         if (this._isMenuOpen() || this._isTrashMenuOpen()) {
             return;
         }
+        if (this._dragActive || this._dragInProgress) {
+            this._refreshPendingAfterDrag = true;
+            return;
+        }
 
-        const appSystem = Shell.AppSystem.get_default();
-        const favorites = this._collectFavorites();
-        const favoriteIds = new Set(favorites.map(info => info.get_id()));
-        const runningIds = new Set(appSystem.get_running().map(a => a.get_id()));
+        try {
+            const appSystem = Shell.AppSystem.get_default();
+            const favorites = this._collectFavorites();
+            const favoriteIds = new Set(favorites.map(info => info.get_id()));
+            const runningIds = new Set(appSystem.get_running().map(a => a.get_id()));
 
-        for (const [appId, itemBox] of [...this._iconActors]) {
-            const isRunning = runningIds.has(appId);
-            const isFavorite = favoriteIds.has(appId);
+            let changed = false;
 
-            if (!isRunning && !isFavorite) {
-                this._iconActors.delete(appId);
+            for (const [appId, itemBox] of [...this._iconActors]) {
+                const isRunning = runningIds.has(appId);
+                const isFavorite = favoriteIds.has(appId);
+
+                if (!isRunning && !isFavorite) {
+                    this._iconActors.delete(appId);
+                    try {
+                        itemBox.destroy();
+                    } catch (e) {
+                    }
+                    changed = true;
+                    continue;
+                }
+
+                this._refreshDockItem(appId, itemBox);
+            }
+
+            const unpinnedRunning = [];
+            for (const app of appSystem.get_running()) {
+                const appId = app.get_id();
+                if (favoriteIds.has(appId)) {
+                    continue;
+                }
+                const info = app.get_app_info() || Gio.DesktopAppInfo.new(appId);
+                if (info) {
+                    unpinnedRunning.push(info);
+                }
+            }
+
+            const runSep = this._getRunSeparator();
+            if (unpinnedRunning.length > 0 && !runSep) {
+                this._dockBox.add_child(this._createRunSeparator());
+                changed = true;
+            } else if (unpinnedRunning.length === 0 && runSep) {
                 try {
-                    itemBox.destroy();
+                    runSep.destroy();
                 } catch (e) {
                 }
-                continue;
+                changed = true;
             }
 
-            this._refreshDockItem(appId, itemBox);
+            for (const info of unpinnedRunning) {
+                const appId = info.get_id();
+                if (this._iconActors.has(appId)) {
+                    continue;
+                }
+                const item = this._createDockItem(info);
+                if (!item) {
+                    continue;
+                }
+                this._dockBox.add_child(item);
+                this._iconActors.set(appId, item);
+                changed = true;
+            }
+
+            this._refreshTrashIcon();
+
+            if (!changed) {
+                return;
+            }
+
+            this._scheduleLayout();
+            this._scheduleUpdateIconGeometries();
+            this._refreshInputRegion();
+        } catch (e) {
         }
-
-        const unpinnedRunning = [];
-        for (const app of appSystem.get_running()) {
-            const appId = app.get_id();
-            if (favoriteIds.has(appId)) {
-                continue;
-            }
-            const info = app.get_app_info() || Gio.DesktopAppInfo.new(appId);
-            if (info) {
-                unpinnedRunning.push(info);
-            }
-        }
-
-        const runSep = this._getRunSeparator();
-        if (unpinnedRunning.length > 0 && !runSep) {
-            this._dockBox.add_child(this._createRunSeparator());
-        } else if (unpinnedRunning.length === 0 && runSep) {
-            try {
-                runSep.destroy();
-            } catch (e) {
-            }
-        }
-
-        for (const info of unpinnedRunning) {
-            const appId = info.get_id();
-            if (this._iconActors.has(appId)) {
-                continue;
-            }
-            const item = this._createDockItem(info);
-            this._dockBox.add_child(item);
-            this._iconActors.set(appId, item);
-        }
-
-        this._refreshTrashIcon();
-
-        this._scheduleLayout();
-        this._scheduleUpdateIconGeometries();
-        this._refreshInputRegion();
     }
 
     /**
@@ -2218,46 +2501,49 @@ export class ModuleDock {
         if (!itemBox || !itemBox.get_children) {
             return;
         }
-        const app = Shell.AppSystem.get_default().lookup_app(appId);
-        const windows = app ? this._getAppWindows(app) : [];
+        try {
+            const app = Shell.AppSystem.get_default().lookup_app(appId);
+            const windows = app ? this._getAppWindows(app) : [];
 
-        let dotBox = null;
-        let button = null;
-        for (const c of itemBox.get_children()) {
-            let cls = '';
-            try {
-                cls = c.style_class || '';
-            } catch (e) {
+            let dotBox = null;
+            let button = null;
+            for (const c of itemBox.get_children()) {
+                let cls = '';
+                try {
+                    cls = c.style_class || '';
+                } catch (e) {
+                }
+                if (cls === 'dock-bar-dotbox') {
+                    dotBox = c;
+                }
+                if (cls === 'dock-bar-appbtn') {
+                    button = c;
+                }
             }
-            if (cls === 'dock-bar-dotbox') {
-                dotBox = c;
-            }
-            if (cls === 'dock-bar-appbtn') {
-                button = c;
-            }
-        }
 
-        if (dotBox) {
-            for (const dot of [...dotBox.get_children()]) {
-                dot.destroy();
+            if (dotBox) {
+                for (const dot of [...dotBox.get_children()]) {
+                    dot.destroy();
+                }
+                const numDots = Math.min(windows.length, DOCK_ICON_MAX_DOTS);
+                for (let i = 0; i < numDots; i++) {
+                    dotBox.add_child(new St.Widget({ style_class: 'dock-bar-dotlist', y_align: Clutter.ActorAlign.CENTER }));
+                }
+                const dotWidth = numDots > 0 ? (numDots * 4 + (numDots - 1) * 3) : 0;
+                const dotX = Math.floor((this._itemSize - dotWidth) / 2);
+                dotBox.set_position(dotX, this._itemSize - 6);
+                dotBox.set_width(dotWidth > 0 ? dotWidth : 1);
+                dotBox.set_height(4);
             }
-            const numDots = Math.min(windows.length, DOCK_ICON_MAX_DOTS);
-            for (let i = 0; i < numDots; i++) {
-                dotBox.add_child(new St.Widget({ style_class: 'dock-bar-dotlist', y_align: Clutter.ActorAlign.CENTER }));
-            }
-            const dotWidth = numDots > 0 ? (numDots * 4 + (numDots - 1) * 3) : 0;
-            const dotX = Math.floor((this._itemSize - dotWidth) / 2);
-            dotBox.set_position(dotX, this._itemSize - 6);
-            dotBox.set_width(dotWidth > 0 ? dotWidth : 1);
-            dotBox.set_height(4);
-        }
 
-        if (button) {
-            if (windows.length === 0 && !this._isFavorite(appId)) {
-                button.set_opacity(128);
-            } else {
-                button.set_opacity(255);
+            if (button) {
+                if (windows.length === 0 && !this._isFavorite(appId)) {
+                    button.set_opacity(128);
+                } else {
+                    button.set_opacity(255);
+                }
             }
+        } catch (e) {
         }
     }
 
@@ -2274,10 +2560,13 @@ export class ModuleDock {
         button.set_child(icon);
 
         button.connect('clicked', () => {
-            if (Main.overview.visible) {
-                Main.overview.hide();
-            } else {
-                Main.overview.showApps();
+            try {
+                if (Main.overview.visible) {
+                    Main.overview.hide();
+                } else {
+                    Main.overview.showApps();
+                }
+            } catch (e) {
             }
         });
 
@@ -2314,7 +2603,7 @@ export class ModuleDock {
     }
 
     /**
-     * @brief Create the trash item shown at the rightmost side of the dock
+     * @brief Create the trash item shown after the favorites and before the running apps
      * @return A new St.Widget representing the trash item
      */
     _createTrashItem() {
@@ -2361,7 +2650,10 @@ export class ModuleDock {
         itemBox.connect('button-release-event', (actor, event) => {
             const btn = event.get_button();
             if (btn === 3) {
-                this._showTrashContextMenu(itemBox);
+                try {
+                    this._showTrashContextMenu(itemBox);
+                } catch (e) {
+                }
                 return Clutter.EVENT_STOP;
             }
             if (btn !== 1) {
@@ -2389,58 +2681,64 @@ export class ModuleDock {
      * @param sourceActor The trash item actor used as the menu source
      */
     _showTrashContextMenu(sourceActor) {
-        this._hideLabel();
-        this._closeTrashMenu();
-
-        if (!this._trashMenuManager) {
-            this._trashMenuManager = new PopupMenu.PopupMenuManager(this);
-        }
-
-        const menu = new PopupMenu.PopupMenu(sourceActor, 0.5, St.Side.BOTTOM);
-        menu.actor.add_style_class_name('visual-tweak-dock-menu');
-        menu.actor.set_style('background-color: transparent; border: none; box-shadow: none;');
-        Main.uiGroup.add_child(menu.actor);
-        this._trashMenuManager.addMenu(menu);
-
-        const isEmpty = this._isTrashEmpty();
-        const emptyItem = new PopupMenu.PopupMenuItem(_('Empty Trash'));
-        emptyItem.add_style_class_name('dock-menu-item');
-        emptyItem.set_style('margin-top: 0;');
-        emptyItem.setSensitive(!isEmpty);
-        if (!isEmpty) {
-            emptyItem.connect('activate', () => {
-                this._emptyTrash();
-            });
-        }
-        menu.addMenuItem(emptyItem);
-
-        menu.connect('open-state-changed', (popupMenu, isOpen) => {
-            if (!isOpen) {
-                try {
-                    if (this._trashMenuManager) {
-                        this._trashMenuManager.removeMenu(popupMenu);
-                    }
-                } catch (e) {
-                }
-                try {
-                    popupMenu.destroy();
-                } catch (e) {
-                }
-                if (this._trashMenu === popupMenu) {
-                    this._trashMenu = null;
-                }
-            }
-        });
-
         try {
-            menu.open(BoxPointer.PopupAnimation.FULL);
+            this._hideLabel();
+            this._closeTrashMenu();
+
+            if (!this._trashMenuManager) {
+                this._trashMenuManager = new PopupMenu.PopupMenuManager(this);
+            }
+
+            const menu = new PopupMenu.PopupMenu(sourceActor, 0.5, St.Side.BOTTOM);
+            menu.actor.add_style_class_name('visual-tweak-dock-menu');
+            menu.actor.set_style('background-color: transparent; border: none; box-shadow: none;');
+            Main.uiGroup.add_child(menu.actor);
+            this._trashMenuManager.addMenu(menu);
+
+            const isEmpty = this._isTrashEmpty();
+            const emptyItem = new PopupMenu.PopupMenuItem(_('Empty Trash'));
+            emptyItem.add_style_class_name('dock-menu-item');
+            emptyItem.set_style('margin-top: 0;');
+            emptyItem.setSensitive(!isEmpty);
+            if (!isEmpty) {
+                emptyItem.connect('activate', () => {
+                    try {
+                        this._emptyTrash();
+                    } catch (e) {
+                    }
+                });
+            }
+            menu.addMenuItem(emptyItem);
+
+            menu.connect('open-state-changed', (popupMenu, isOpen) => {
+                if (!isOpen) {
+                    try {
+                        if (this._trashMenuManager) {
+                            this._trashMenuManager.removeMenu(popupMenu);
+                        }
+                    } catch (e) {
+                    }
+                    try {
+                        popupMenu.destroy();
+                    } catch (e) {
+                    }
+                    if (this._trashMenu === popupMenu) {
+                        this._trashMenu = null;
+                    }
+                }
+            });
+
+            try {
+                menu.open(BoxPointer.PopupAnimation.FULL);
+            } catch (e) {
+            }
+
+            this._applyMenuBackground(menu);
+            this._applyMenuSpacing(menu, true);
+
+            this._trashMenu = menu;
         } catch (e) {
         }
-
-        this._applyMenuBackground(menu);
-        this._applyMenuSpacing(menu, true);
-
-        this._trashMenu = menu;
     }
 
     /**
@@ -2540,186 +2838,233 @@ export class ModuleDock {
     /**
      * @brief Create a single dock item (icon, button, dots) for an app
      * @param appInfo The Gio.DesktopAppInfo of the app
-     * @return A new St.Widget representing the dock item
+     * @return A new St.Widget representing the dock item, or null on failure
      */
     _createDockItem(appInfo) {
         const itemSize = this._itemSize;
 
-        const itemBox = new St.Widget({
-            style_class: 'dock-bar-itembox', reactive: true, track_hover: true,
-            width: itemSize, height: itemSize, y_align: Clutter.ActorAlign.CENTER,
-        });
+        let itemBox = null;
+        let button = null;
+        let dotBox = null;
 
-        const button = new St.Button({
-            style_class: 'dock-bar-appbtn', reactive: false, can_focus: false,
-            width: itemSize, height: itemSize,
-        });
+        try {
+            itemBox = new St.Widget({
+                style_class: 'dock-bar-itembox', reactive: true, track_hover: true,
+                width: itemSize, height: itemSize, y_align: Clutter.ActorAlign.CENTER,
+            });
 
-        let gicon = appInfo.get_icon();
-        if (!gicon) {
-            gicon = new Gio.ThemedIcon({ name: 'application-x-executable' });
-        }
-        const icon = new St.Icon({ gicon: gicon, icon_size: this._iconSize, style_class: 'dock-bar-appico' });
-        button.set_child(icon);
-        button.set_position(0, 0);
-        button.set_size(itemSize, itemSize);
+            button = new St.Button({
+                style_class: 'dock-bar-appbtn', reactive: false, can_focus: false,
+                width: itemSize, height: itemSize,
+            });
 
-        const agent = new DockDragAgent(this, itemBox, appInfo);
-        itemBox._delegate = agent;
-        itemBox._draggable = DND.makeDraggable(itemBox, {
-            restoreOnSuccess: true,
-            manualMode: true,
-        });
-        itemBox._dragStartX = 0;
-        itemBox._dragStartY = 0;
-        itemBox._dragTracking = false;
-
-        itemBox.connect('button-press-event', (actor, event) => {
-            if (event.get_button() === 1) {
-                const [px, py] = global.get_pointer();
-                itemBox._dragStartX = px;
-                itemBox._dragStartY = py;
-                itemBox._dragTracking = true;
+            let gicon = appInfo.get_icon();
+            if (!gicon) {
+                gicon = new Gio.ThemedIcon({ name: 'application-x-executable' });
             }
-            return Clutter.EVENT_PROPAGATE;
-        });
+            const icon = new St.Icon({ gicon: gicon, icon_size: this._iconSize, style_class: 'dock-bar-appico' });
+            button.set_child(icon);
+            button.set_position(0, 0);
+            button.set_size(itemSize, itemSize);
 
-        itemBox.connect('motion-event', (actor, event) => {
-            if (!itemBox._dragTracking || !itemBox._draggable) {
+            const isFavorite = this._isFavorite(appInfo.get_id());
+            if (isFavorite) {
+                const agent = new DockDragAgent(this, itemBox, appInfo);
+                itemBox._delegate = agent;
+                try {
+                    itemBox._draggable = DND.makeDraggable(itemBox, {
+                        restoreOnSuccess: true,
+                        manualMode: true,
+                    });
+                } catch (e) {
+                    itemBox._draggable = null;
+                }
+            } else {
+                itemBox._draggable = null;
+                itemBox._delegate = null;
+            }
+
+            itemBox._dragStartX = 0;
+            itemBox._dragStartY = 0;
+            itemBox._dragTracking = false;
+
+            itemBox.connect('button-press-event', (actor, event) => {
+                if (event.get_button() === 1) {
+                    const [px, py] = global.get_pointer();
+                    itemBox._dragStartX = px;
+                    itemBox._dragStartY = py;
+                    itemBox._dragTracking = true;
+                }
                 return Clutter.EVENT_PROPAGATE;
-            }
-            if (!this._isLeftButtonHeld()) {
-                itemBox._dragTracking = false;
+            });
+
+            itemBox.connect('motion-event', (actor, event) => {
+                try {
+                    if (!itemBox._dragTracking || !itemBox._draggable) {
+                        return Clutter.EVENT_PROPAGATE;
+                    }
+                    if (!this._isLeftButtonHeld()) {
+                        itemBox._dragTracking = false;
+                        return Clutter.EVENT_PROPAGATE;
+                    }
+                    const [px, py] = global.get_pointer();
+                    const dx = px - itemBox._dragStartX;
+                    const dy = py - itemBox._dragStartY;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    let threshold = 8;
+                    try {
+                        threshold = Clutter.Settings.get_default().get_dnd_drag_threshold();
+                    } catch (e) {
+                    }
+                    if (dist >= threshold) {
+                        itemBox._dragTracking = false;
+                        if (this._dragInProgress) {
+                            return Clutter.EVENT_PROPAGATE;
+                        }
+                        this._dropHandled = false;
+                        this._dragInProgress = true;
+                        this._startDragTimeout();
+                        try {
+                            itemBox._draggable.startDrag(px, py, event.get_time());
+                        } catch (e) {
+                        }
+                    }
+                } catch (e) {
+                }
                 return Clutter.EVENT_PROPAGATE;
-            }
-            const [px, py] = global.get_pointer();
-            const dx = px - itemBox._dragStartX;
-            const dy = py - itemBox._dragStartY;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            let threshold = 8;
+            });
+
+            itemBox.connect('button-release-event', (actor, event) => {
+                if (event.get_button() === 1) {
+                    itemBox._dragTracking = false;
+                    if (this._dragInProgress && !this._dragActive) {
+                        this._dragInProgress = false;
+                        this._dropHandled = false;
+                        this._cancelDragTimeout();
+                        try {
+                            this._flushPendingRefreshAfterDrag();
+                        } catch (e) {
+                        }
+                    }
+                }
+                return Clutter.EVENT_PROPAGATE;
+            });
+
+            const appName = appInfo.get_name?.() ?? appInfo.get_name;
+            itemBox.connect('enter-event', () => {
+                if (this._dragActive) {
+                    return Clutter.EVENT_PROPAGATE;
+                }
+                this._showLabelFor(itemBox, appName);
+                return Clutter.EVENT_PROPAGATE;
+            });
+            itemBox.connect('leave-event', () => {
+                this._scheduleLabelHide();
+                return Clutter.EVENT_PROPAGATE;
+            });
+
+            let isPressing = false;
+            let pressButton = 0;
+            itemBox.connect('button-press-event', (actor, event) => {
+                const btn = event.get_button();
+                if (btn !== 1 && btn !== 2 && btn !== 3) {
+                    return Clutter.EVENT_PROPAGATE;
+                }
+                this._hideLabel();
+                isPressing = true;
+                pressButton = btn;
+                return Clutter.EVENT_PROPAGATE;
+            });
+
+            itemBox.connect('button-release-event', (actor, event) => {
+                try {
+                    const wasPressing = isPressing;
+                    const pressedBtn = pressButton;
+                    isPressing = false; pressButton = 0;
+                    const buttonNumber = event.get_button();
+
+                    if (this._dragActive) {
+                        return Clutter.EVENT_STOP;
+                    }
+                    if (!wasPressing || buttonNumber !== pressedBtn) {
+                        return Clutter.EVENT_PROPAGATE;
+                    }
+
+                    if (buttonNumber === 3) {
+                        try {
+                            this._showContextMenu(appInfo, itemBox);
+                        } catch (e) {
+                        }
+                        return Clutter.EVENT_STOP;
+                    }
+                    if (buttonNumber === 2) {
+                        try {
+                            if (Main.overview.visible) {
+                                Main.overview.hide();
+                            }
+                            const app = Shell.AppSystem.get_default().lookup_app(appInfo.get_id());
+                            if (app) {
+                                app.open_new_window(-1);
+                            } else {
+                                this._launchNewApp(appInfo);
+                            }
+                        } catch (e) {
+                        }
+                        return Clutter.EVENT_STOP;
+                    }
+                    if (buttonNumber !== 1) {
+                        return Clutter.EVENT_PROPAGATE;
+                    }
+
+                    const state = event.get_state();
+                    const isShift = (state & Clutter.ModifierType.SHIFT_MASK) !== 0;
+                    if (isShift) {
+                        this._handleShiftClick(appInfo);
+                    } else {
+                        this._cancelShiftClick();
+                        if (Main.overview.visible) {
+                            Main.overview.hide();
+                        }
+                        this._launchApp(appInfo);
+                    }
+                    return Clutter.EVENT_STOP;
+                } catch (e) {
+                    return Clutter.EVENT_PROPAGATE;
+                }
+            });
+
+            let windowCount = 0;
             try {
-                threshold = Clutter.Settings.get_default().get_dnd_drag_threshold();
+                const app = Shell.AppSystem.get_default().lookup_app(appInfo.get_id());
+                if (app) {
+                    windowCount = this._getAppWindows(app).length;
+                }
             } catch (e) {
             }
-            if (dist >= threshold) {
-                itemBox._dragTracking = false;
-                try {
-                    itemBox._draggable.startDrag(px, py, event.get_time());
-                } catch (e) {
-                }
+            const numDots = Math.min(windowCount, DOCK_ICON_MAX_DOTS);
+            dotBox = new St.BoxLayout({ style_class: 'dock-bar-dotbox', reactive: false });
+            for (let i = 0; i < numDots; i++) {
+                dotBox.add_child(new St.Widget({ style_class: 'dock-bar-dotlist', y_align: Clutter.ActorAlign.CENTER }));
             }
-            return Clutter.EVENT_PROPAGATE;
-        });
+            const dotWidth = numDots > 0 ? (numDots * 4 + (numDots - 1) * 3) : 0;
+            const dotX = Math.floor((itemSize - dotWidth) / 2);
+            dotBox.set_position(dotX, itemSize - 6);
+            dotBox.set_width(dotWidth > 0 ? dotWidth : 1);
+            dotBox.set_height(4);
+            dotBox.set_z_position(1);
 
-        itemBox.connect('button-release-event', (actor, event) => {
-            if (event.get_button() === 1) {
-                itemBox._dragTracking = false;
-            }
-            return Clutter.EVENT_PROPAGATE;
-        });
-
-        const appName = appInfo.get_name?.() ?? appInfo.get_name;
-        itemBox.connect('enter-event', () => {
-            if (this._dragActive) {
-                return Clutter.EVENT_PROPAGATE;
-            }
-            this._showLabelFor(itemBox, appName);
-            return Clutter.EVENT_PROPAGATE;
-        });
-        itemBox.connect('leave-event', () => {
-            this._scheduleLabelHide();
-            return Clutter.EVENT_PROPAGATE;
-        });
-
-        let isPressing = false;
-        let pressButton = 0;
-        itemBox.connect('button-press-event', (actor, event) => {
-            const btn = event.get_button();
-            if (btn !== 1 && btn !== 2 && btn !== 3) {
-                return Clutter.EVENT_PROPAGATE;
-            }
-            this._hideLabel();
-            isPressing = true;
-            pressButton = btn;
-            return Clutter.EVENT_PROPAGATE;
-        });
-
-        itemBox.connect('button-release-event', (actor, event) => {
-            const wasPressing = isPressing;
-            const pressedBtn = pressButton;
-            isPressing = false; pressButton = 0;
-            const buttonNumber = event.get_button();
-
-            if (this._dragActive) {
-                return Clutter.EVENT_STOP;
-            }
-            if (!wasPressing || buttonNumber !== pressedBtn) {
-                return Clutter.EVENT_PROPAGATE;
-            }
-
-            if (buttonNumber === 3) {
-                try {
-                    this._showContextMenu(appInfo, itemBox);
-                } catch (e) {
-                }
-                return Clutter.EVENT_STOP;
-            }
-            if (buttonNumber === 2) {
-                try {
-                    if (Main.overview.visible) {
-                        Main.overview.hide();
-                    }
-                    const app = Shell.AppSystem.get_default().lookup_app(appInfo.get_id());
-                    if (app) {
-                        app.open_new_window(-1);
-                    } else {
-                        this._launchNewApp(appInfo);
-                    }
-                } catch (e) {
-                }
-                return Clutter.EVENT_STOP;
-            }
-            if (buttonNumber !== 1) {
-                return Clutter.EVENT_PROPAGATE;
-            }
-
-            const state = event.get_state();
-            const isShift = (state & Clutter.ModifierType.SHIFT_MASK) !== 0;
-            if (isShift) {
-                this._handleShiftClick(appInfo);
-            } else {
-                this._cancelShiftClick();
-                if (Main.overview.visible) {
-                    Main.overview.hide();
-                }
-                this._launchApp(appInfo);
-            }
-            return Clutter.EVENT_STOP;
-        });
-
-        let windowCount = 0;
-        try {
-            const app = Shell.AppSystem.get_default().lookup_app(appInfo.get_id());
-            if (app) {
-                windowCount = this._getAppWindows(app).length;
-            }
+            itemBox.add_child(button);
+            itemBox.add_child(dotBox);
+            return itemBox;
         } catch (e) {
+            try {
+                if (itemBox) {
+                    itemBox.destroy();
+                }
+            } catch (e2) {
+            }
+            return null;
         }
-        const numDots = Math.min(windowCount, DOCK_ICON_MAX_DOTS);
-        const dotBox = new St.BoxLayout({ style_class: 'dock-bar-dotbox', reactive: false });
-        for (let i = 0; i < numDots; i++) {
-            dotBox.add_child(new St.Widget({ style_class: 'dock-bar-dotlist', y_align: Clutter.ActorAlign.CENTER }));
-        }
-        const dotWidth = numDots > 0 ? (numDots * 4 + (numDots - 1) * 3) : 0;
-        const dotX = Math.floor((itemSize - dotWidth) / 2);
-        dotBox.set_position(dotX, itemSize - 6);
-        dotBox.set_width(dotWidth > 0 ? dotWidth : 1);
-        dotBox.set_height(4);
-        dotBox.set_z_position(1);
-
-        itemBox.add_child(button);
-        itemBox.add_child(dotBox);
-        return itemBox;
     }
 
     /**
@@ -2932,134 +3277,148 @@ export class ModuleDock {
      * @param sourceActor The dock item actor used as the menu source
      */
     _showContextMenu(appInfo, sourceActor) {
-        this._hideLabel();
-
-        this._menuTransitioning = true;
-
-        this._clearMenuWindowSignals();
-
-        if (this._menu) {
-            try {
-                this._menu.destroy();
-            } catch (e) {
-            }
-            this._menu = null;
-        }
-        this._menuIsEmpty = false;
-
-        const app = Shell.AppSystem.get_default().lookup_app(appInfo.get_id());
-        const windows = app ? this._getAppWindows(app) : [];
-
-        let sx = 0, sy = 0, sw = 1, sh = 1;
-        let sourceValid = false;
         try {
-            if (sourceActor && sourceActor.get_stage && sourceActor.get_stage()) {
-                [sx, sy] = sourceActor.get_transformed_position();
-                [sw, sh] = sourceActor.get_transformed_size();
-                if (!isNaN(sx) && !isNaN(sy) && !isNaN(sw) && !isNaN(sh) && sw > 0 && sh > 0) {
-                    sourceValid = true;
-                }
-            }
-        } catch (e) {
-        }
+            this._hideLabel();
 
-        let realSource = sourceActor;
-        if (!sourceValid) {
-            realSource = this._dockBox;
-            try {
-                if (realSource) {
-                    [sx, sy] = realSource.get_transformed_position();
-                    [sw, sh] = realSource.get_transformed_size();
-                }
-            } catch (e) {
-            }
-        }
+            this._menuTransitioning = true;
 
-        const menu = new PopupMenu.PopupMenu(realSource, 0.5, St.Side.BOTTOM);
-        menu.actor.add_style_class_name('visual-tweak-dock-menu');
-        menu.actor.set_style('background-color: transparent; border: none; box-shadow: none;');
-        Main.uiGroup.add_child(menu.actor);
-        this._menuManager.addMenu(menu);
+            this._clearMenuWindowSignals();
 
-        try {
-            if (windows.length > 0) {
-                const useThumbnails = windows.length <= MENU_OPEN_THUMB_MAX;
-                for (const win of windows) {
-                    const item = useThumbnails
-                        ? this._createThumbnailWindowItem(win, appInfo, sourceActor)
-                        : this._createTextWindowItem(win, appInfo, sourceActor);
-                    menu.addMenuItem(item);
-                }
-                menu.addMenuItem(this._createMenuSeparator(MENU_CONTENT_PADDING_B));
-                this._menuIsEmpty = false;
-            } else {
-                menu.addMenuItem(this._createEmptyTextRow());
-                menu.addMenuItem(this._createMenuSeparator());
-                this._menuIsEmpty = true;
-            }
-
-            const newWindowItem = new PopupMenu.PopupMenuItem(_('New Window'));
-            newWindowItem.add_style_class_name('dock-menu-item');
-            newWindowItem.connect('activate', () => this._launchNewApp(appInfo));
-            menu.addMenuItem(newWindowItem);
-
-            const isFavorite = this._isFavorite(appInfo.get_id());
-            const pinItem = new PopupMenu.PopupMenuItem(isFavorite ? _('Unpin') : _('Pin'));
-            pinItem.add_style_class_name('dock-menu-item');
-            pinItem.connect('activate', () => this._toggleFavorite(appInfo));
-            menu.addMenuItem(pinItem);
-
-            if (app && windows.length > 0) {
-                menu.addMenuItem(this._createMenuSeparator());
-
-                const quitItem = new PopupMenu.PopupMenuItem(_('Quit'));
-                quitItem.add_style_class_name('dock-menu-item');
-                quitItem.connect('activate', () => this._quitApp(appInfo));
-                menu.addMenuItem(quitItem);
-            }
-        } catch (e) {
-        }
-
-        menu.connect('open-state-changed', (popupMenu, isOpen) => {
-            if (!isOpen) {
-                this._clearMenuWindowSignals();
+            if (this._menu) {
                 try {
-                    if (this._menuManager) {
-                        this._menuManager.removeMenu(popupMenu);
+                    this._menu.destroy();
+                } catch (e) {
+                }
+                this._menu = null;
+            }
+            this._menuIsEmpty = false;
+
+            const app = Shell.AppSystem.get_default().lookup_app(appInfo.get_id());
+            const windows = app ? this._getAppWindows(app) : [];
+
+            let realSource = sourceActor;
+            let sourceValid = false;
+            try {
+                if (sourceActor && sourceActor.get_stage && sourceActor.get_stage()) {
+                    const [sx, sy] = sourceActor.get_transformed_position();
+                    const [sw, sh] = sourceActor.get_transformed_size();
+                    if (!isNaN(sx) && !isNaN(sy) && !isNaN(sw) && !isNaN(sh) && sw > 0 && sh > 0) {
+                        sourceValid = true;
                     }
-                } catch (e) {
                 }
-                try {
-                    popupMenu.destroy();
-                } catch (e) {
-                }
-                if (this._menu === popupMenu) {
-                    this._menu = null;
+            } catch (e) {
+            }
+
+            if (!sourceValid) {
+                realSource = this._dockBox;
+            }
+
+            const menu = new PopupMenu.PopupMenu(realSource, 0.5, St.Side.BOTTOM);
+            menu.actor.add_style_class_name('visual-tweak-dock-menu');
+            menu.actor.set_style('background-color: transparent; border: none; box-shadow: none;');
+            Main.uiGroup.add_child(menu.actor);
+            this._menuManager.addMenu(menu);
+
+            try {
+                if (windows.length > 0) {
+                    const useThumbnails = windows.length <= MENU_OPEN_THUMB_MAX;
+                    for (const win of windows) {
+                        const item = useThumbnails
+                            ? this._createThumbnailWindowItem(win, appInfo, sourceActor)
+                            : this._createTextWindowItem(win, appInfo, sourceActor);
+                        menu.addMenuItem(item);
+                    }
+                    menu.addMenuItem(this._createMenuSeparator(MENU_CONTENT_PADDING_B));
                     this._menuIsEmpty = false;
+                } else {
+                    menu.addMenuItem(this._createEmptyTextRow());
+                    menu.addMenuItem(this._createMenuSeparator());
+                    this._menuIsEmpty = true;
                 }
-                this._menuSavedBottom = null;
-                this._menuSavedX = null;
-                GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-                    if (this._dockBox) {
-                        this._refreshDockItems();
+
+                const newWindowItem = new PopupMenu.PopupMenuItem(_('New Window'));
+                newWindowItem.add_style_class_name('dock-menu-item');
+                newWindowItem.connect('activate', () => {
+                    try {
+                        this._launchNewApp(appInfo);
+                    } catch (e) {
                     }
-                    return GLib.SOURCE_REMOVE;
                 });
+                menu.addMenuItem(newWindowItem);
+
+                const isFavorite = this._isFavorite(appInfo.get_id());
+                const pinItem = new PopupMenu.PopupMenuItem(isFavorite ? _('Unpin') : _('Pin'));
+                pinItem.add_style_class_name('dock-menu-item');
+                pinItem.connect('activate', () => {
+                    try {
+                        this._toggleFavorite(appInfo);
+                    } catch (e) {
+                    }
+                });
+                menu.addMenuItem(pinItem);
+
+                if (app && windows.length > 0) {
+                    menu.addMenuItem(this._createMenuSeparator());
+
+                    const quitItem = new PopupMenu.PopupMenuItem(_('Quit'));
+                    quitItem.add_style_class_name('dock-menu-item');
+                    quitItem.connect('activate', () => {
+                        try {
+                            this._quitApp(appInfo);
+                        } catch (e) {
+                        }
+                    });
+                    menu.addMenuItem(quitItem);
+                }
+            } catch (e) {
             }
-        });
 
-        try {
-            menu.open(BoxPointer.PopupAnimation.FULL);
+            menu.connect('open-state-changed', (popupMenu, isOpen) => {
+                if (!isOpen) {
+                    this._clearMenuWindowSignals();
+                    try {
+                        if (this._menuManager) {
+                            this._menuManager.removeMenu(popupMenu);
+                        }
+                    } catch (e) {
+                    }
+                    try {
+                        popupMenu.destroy();
+                    } catch (e) {
+                    }
+                    if (this._menu === popupMenu) {
+                        this._menu = null;
+                        this._menuIsEmpty = false;
+                    }
+                    this._menuSavedBottom = null;
+                    this._menuSavedX = null;
+                    GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                        try {
+                            if (this._dockBox) {
+                                this._refreshDockItems();
+                            }
+                        } catch (e) {
+                        }
+                        return GLib.SOURCE_REMOVE;
+                    });
+                }
+            });
+
+            try {
+                menu.open(BoxPointer.PopupAnimation.FULL);
+            } catch (e) {
+            }
+
+            this._applyMenuBackground(menu);
+            this._applyMenuSpacing(menu, false);
+
+            this._menu = menu;
+            this._menuTransitioning = false;
+
+            this._recordMenuPos();
         } catch (e) {
+            this._menuTransitioning = false;
         }
-
-        this._applyMenuBackground(menu);
-        this._applyMenuSpacing(menu, false);
-
-        this._menu = menu;
-        this._menuTransitioning = false;
-
-        this._recordMenuPos();
     }
 
     /**
@@ -3139,7 +3498,10 @@ export class ModuleDock {
         });
         closeBtn.set_child(closeIcon);
         closeBtn.connect('clicked', () => {
-            this._closeWindowAndKeepMenu(win, title);
+            try {
+                this._closeWindowAndKeepMenu(win);
+            } catch (e) {
+            }
         });
 
         hbox.add_child(label);
@@ -3193,22 +3555,68 @@ export class ModuleDock {
         if (!menu || !menu.actor) {
             return;
         }
-        let children = [];
         try {
-            children = menu.actor.get_children ? menu.actor.get_children() : [];
-        } catch (e) {
-        }
-        for (const child of children) {
-            let cls = '';
+            let children = [];
             try {
-                cls = child.style_class || child.constructor?.name || '';
+                children = menu.actor.get_children ? menu.actor.get_children() : [];
             } catch (e) {
             }
-            if (cls === 'St_Bin' || child instanceof St.Bin) {
+            for (const child of children) {
+                let cls = '';
                 try {
-                    child.set_style('background-color: transparent; border: none; box-shadow: none;');
+                    cls = child.style_class || child.constructor?.name || '';
                 } catch (e) {
                 }
+                if (cls === 'St_Bin' || child instanceof St.Bin) {
+                    try {
+                        child.set_style('background-color: transparent; border: none; box-shadow: none;');
+                    } catch (e) {
+                    }
+                    let grand = [];
+                    try {
+                        grand = child.get_children ? child.get_children() : [];
+                    } catch (e) {
+                    }
+                    for (const g of grand) {
+                        let gCls = '';
+                        try {
+                            gCls = g.style_class || '';
+                        } catch (e) {
+                        }
+                        if (gCls === 'popup-menu-content') {
+                            try {
+                                g.set_style(
+                                    `background-color: ${MENU_POPUP_BG_COLOR}; ` +
+                                    `border: none; box-shadow: ${MENU_POPUP_BOX_SHADOW}; ` +
+                                    `padding: 0px ${MENU_CONTENT_PADDING_LR}px ${MENU_CONTENT_PADDING_B}px ${MENU_CONTENT_PADDING_LR}px;`
+                                );
+                            } catch (e) {
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+        }
+    }
+
+    /**
+     * @brief Apply padding to the popup menu content
+     * @param menu The PopupMenu to style
+     * @param symmetricTop True to use the same top and bottom padding
+     */
+    _applyMenuSpacing(menu, symmetricTop = false) {
+        if (!menu || !menu.actor) {
+            return;
+        }
+        try {
+            const padTop = symmetricTop ? MENU_CONTENT_PADDING_T : 0;
+            let children = [];
+            try {
+                children = menu.actor.get_children ? menu.actor.get_children() : [];
+            } catch (e) {
+            }
+            for (const child of children) {
                 let grand = [];
                 try {
                     grand = child.get_children ? child.get_children() : [];
@@ -3225,54 +3633,14 @@ export class ModuleDock {
                             g.set_style(
                                 `background-color: ${MENU_POPUP_BG_COLOR}; ` +
                                 `border: none; box-shadow: ${MENU_POPUP_BOX_SHADOW}; ` +
-                                `padding: 0px ${MENU_CONTENT_PADDING_LR}px ${MENU_CONTENT_PADDING_B}px ${MENU_CONTENT_PADDING_LR}px;`
+                                `padding: ${padTop}px ${MENU_CONTENT_PADDING_LR}px ${MENU_CONTENT_PADDING_B}px ${MENU_CONTENT_PADDING_LR}px;`
                             );
                         } catch (e) {
                         }
                     }
                 }
             }
-        }
-    }
-
-    /**
-     * @brief Apply padding to the popup menu content
-     * @param menu The PopupMenu to style
-     * @param symmetricTop True to use the same top and bottom padding
-     */
-    _applyMenuSpacing(menu, symmetricTop = false) {
-        if (!menu || !menu.actor) {
-            return;
-        }
-        const padTop = symmetricTop ? MENU_CONTENT_PADDING_T : 0;
-        let children = [];
-        try {
-            children = menu.actor.get_children ? menu.actor.get_children() : [];
         } catch (e) {
-        }
-        for (const child of children) {
-            let grand = [];
-            try {
-                grand = child.get_children ? child.get_children() : [];
-            } catch (e) {
-            }
-            for (const g of grand) {
-                let gCls = '';
-                try {
-                    gCls = g.style_class || '';
-                } catch (e) {
-                }
-                if (gCls === 'popup-menu-content') {
-                    try {
-                        g.set_style(
-                            `background-color: ${MENU_POPUP_BG_COLOR}; ` +
-                            `border: none; box-shadow: ${MENU_POPUP_BOX_SHADOW}; ` +
-                            `padding: ${padTop}px ${MENU_CONTENT_PADDING_LR}px ${MENU_CONTENT_PADDING_B}px ${MENU_CONTENT_PADDING_LR}px;`
-                        );
-                    } catch (e) {
-                    }
-                }
-            }
         }
     }
 
@@ -3383,7 +3751,10 @@ export class ModuleDock {
         );
         closeBtn.set_size(MENU_OPEN_CLOSEBTN_SIZE, MENU_OPEN_CLOSEBTN_SIZE);
         closeBtn.connect('clicked', () => {
-            this._closeWindowAndKeepMenu(win, title);
+            try {
+                this._closeWindowAndKeepMenu(win);
+            } catch (e) {
+            }
         });
         thumbWrap.add_child(closeBtn);
 
@@ -3503,13 +3874,16 @@ export class ModuleDock {
         if (!appId) {
             return false;
         }
-        const favoriteIds = this._getFavoriteIds();
-        const normalize = (id) => (id || '').toLowerCase().replace(/\.desktop$/, '');
-        const normalizedId = normalize(appId);
-        for (const favId of favoriteIds) {
-            if (normalize(favId) === normalizedId) {
-                return true;
+        try {
+            const favoriteIds = this._getFavoriteIds();
+            const normalize = (id) => (id || '').toLowerCase().replace(/\.desktop$/, '');
+            const normalizedId = normalize(appId);
+            for (const favId of favoriteIds) {
+                if (normalize(favId) === normalizedId) {
+                    return true;
+                }
             }
+        } catch (e) {
         }
         return false;
     }
@@ -3558,17 +3932,23 @@ export class ModuleDock {
      * @param appInfo The Gio.DesktopAppInfo of the app
      */
     _handleShiftClick(appInfo) {
-        if (this._shiftClickTimeoutId) {
-            GLib.Source.remove(this._shiftClickTimeoutId);
-            this._shiftClickTimeoutId = 0;
-            this._minimizeAllOnAllWorkspaces(appInfo);
-            return;
+        try {
+            if (this._shiftClickTimeoutId) {
+                GLib.Source.remove(this._shiftClickTimeoutId);
+                this._shiftClickTimeoutId = 0;
+                this._minimizeAllOnAllWorkspaces(appInfo);
+                return;
+            }
+            this._shiftClickTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, DOCK_MINIMIZE_ALL_DELAY, () => {
+                this._shiftClickTimeoutId = 0;
+                try {
+                    this._minimizeOneAcrossWorkspaces(appInfo);
+                } catch (e) {
+                }
+                return GLib.SOURCE_REMOVE;
+            });
+        } catch (e) {
         }
-        this._shiftClickTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, DOCK_MINIMIZE_ALL_DELAY, () => {
-            this._shiftClickTimeoutId = 0;
-            this._minimizeOneAcrossWorkspaces(appInfo);
-            return GLib.SOURCE_REMOVE;
-        });
     }
 
     /**
@@ -3586,93 +3966,96 @@ export class ModuleDock {
      * @param appInfo The Gio.DesktopAppInfo of the app
      */
     _minimizeOneAcrossWorkspaces(appInfo) {
-        const app = Shell.AppSystem.get_default().lookup_app(appInfo.get_id());
-        if (!app) {
-            return;
-        }
-
-        const windows = this._getAppWindowsAllWorkspacesOrdered(app);
-        const appId = appInfo.get_id();
-
-        if (windows.length === 0) {
-            this._shiftClickCursor.delete(appId);
-            return;
-        }
-
-        let startIndex = 0;
-        const cursorId = this._shiftClickCursor.get(appId);
-
-        if (cursorId !== undefined) {
-            const idx = windows.findIndex(w => w.get_id() === cursorId);
-            if (idx !== -1) {
-                startIndex = (idx + 1) % windows.length;
+        try {
+            const app = Shell.AppSystem.get_default().lookup_app(appInfo.get_id());
+            if (!app) {
+                return;
             }
-        } else {
-            const lastActive = this._getLastActiveWindow(appId);
-            if (lastActive) {
-                const idx = windows.findIndex(w => w.get_id() === lastActive.get_id());
+
+            const windows = this._getAppWindowsAllWorkspacesOrdered(app);
+            const appId = appInfo.get_id();
+
+            if (windows.length === 0) {
+                this._shiftClickCursor.delete(appId);
+                return;
+            }
+
+            let startIndex = 0;
+            const cursorId = this._shiftClickCursor.get(appId);
+
+            if (cursorId !== undefined) {
+                const idx = windows.findIndex(w => w.get_id() === cursorId);
                 if (idx !== -1) {
-                    startIndex = idx;
+                    startIndex = (idx + 1) % windows.length;
+                }
+            } else {
+                const lastActive = this._getLastActiveWindow(appId);
+                if (lastActive) {
+                    const idx = windows.findIndex(w => w.get_id() === lastActive.get_id());
+                    if (idx !== -1) {
+                        startIndex = idx;
+                    }
                 }
             }
-        }
 
-        let target = null;
-        for (let k = 0; k < windows.length; k++) {
-            const idx = (startIndex + k) % windows.length;
-            const w = windows[idx];
-            let minimized = false;
-            try {
-                minimized = w.minimized;
-            } catch (e) {
-                minimized = false;
-            }
-            if (!minimized) {
-                target = w;
-                break;
-            }
-        }
-
-        if (!target) {
-            return;
-        }
-
-        if (this._shiftMinimizeTimeoutId) {
-            GLib.Source.remove(this._shiftMinimizeTimeoutId);
-            this._shiftMinimizeTimeoutId = 0;
-        }
-
-        try {
-            if (!target.is_on_all_workspaces()) {
-                const ws = target.get_workspace();
-                const active = this._getActiveWorkspace();
-                if (ws && ws !== active) {
-                    ws.activate(global.get_current_time());
-                }
-            }
-        } catch (e) {
-        }
-
-        try {
-            Main.activateWindow(target, global.get_current_time());
-        } catch (e) {
-            try {
-                target.activate(global.get_current_time());
-            } catch (e2) {
-            }
-        }
-
-        this._shiftMinimizeTimeoutId = GLib.timeout_add(
-            GLib.PRIORITY_DEFAULT, DOCK_SHIFT_MINIMIZE_DELAY, () => {
-                this._shiftMinimizeTimeoutId = 0;
+            let target = null;
+            for (let k = 0; k < windows.length; k++) {
+                const idx = (startIndex + k) % windows.length;
+                const w = windows[idx];
+                let minimized = false;
                 try {
-                    target.minimize();
+                    minimized = w.minimized;
                 } catch (e) {
+                    minimized = false;
                 }
-                return GLib.SOURCE_REMOVE;
-            });
+                if (!minimized) {
+                    target = w;
+                    break;
+                }
+            }
 
-        this._shiftClickCursor.set(appId, target.get_id());
+            if (!target) {
+                return;
+            }
+
+            if (this._shiftMinimizeTimeoutId) {
+                GLib.Source.remove(this._shiftMinimizeTimeoutId);
+                this._shiftMinimizeTimeoutId = 0;
+            }
+
+            try {
+                if (!target.is_on_all_workspaces()) {
+                    const ws = target.get_workspace();
+                    const active = this._getActiveWorkspace();
+                    if (ws && ws !== active) {
+                        ws.activate(global.get_current_time());
+                    }
+                }
+            } catch (e) {
+            }
+
+            try {
+                Main.activateWindow(target, global.get_current_time());
+            } catch (e) {
+                try {
+                    target.activate(global.get_current_time());
+                } catch (e2) {
+                }
+            }
+
+            this._shiftMinimizeTimeoutId = GLib.timeout_add(
+                GLib.PRIORITY_DEFAULT, DOCK_SHIFT_MINIMIZE_DELAY, () => {
+                    this._shiftMinimizeTimeoutId = 0;
+                    try {
+                        target.minimize();
+                    } catch (e) {
+                    }
+                    return GLib.SOURCE_REMOVE;
+                });
+
+            this._shiftClickCursor.set(appId, target.get_id());
+        } catch (e) {
+        }
     }
 
     /**
@@ -3680,20 +4063,23 @@ export class ModuleDock {
      * @param appInfo The Gio.DesktopAppInfo of the app
      */
     _minimizeAllOnAllWorkspaces(appInfo) {
-        const app = Shell.AppSystem.get_default().lookup_app(appInfo.get_id());
-        if (!app) {
-            return;
-        }
-        const windows = this._getAppWindows(app);
-        for (const win of windows) {
-            try {
-                if (!win.minimized) {
-                    win.minimize();
-                }
-            } catch (e) {
+        try {
+            const app = Shell.AppSystem.get_default().lookup_app(appInfo.get_id());
+            if (!app) {
+                return;
             }
+            const windows = this._getAppWindows(app);
+            for (const win of windows) {
+                try {
+                    if (!win.minimized) {
+                        win.minimize();
+                    }
+                } catch (e) {
+                }
+            }
+            this._shiftClickCursor.delete(appInfo.get_id());
+        } catch (e) {
         }
-        this._shiftClickCursor.delete(appInfo.get_id());
     }
 
     /**
@@ -3792,7 +4178,10 @@ export class ModuleDock {
                 }
                 win.activate(global.get_current_time());
             } catch (e) {
-                app.activate();
+                try {
+                    app.activate();
+                } catch (e2) {
+                }
             }
 
             this._windowCycleCursor.set(appId, win.get_id());
@@ -3814,96 +4203,100 @@ export class ModuleDock {
      * @brief Destroy the dock actors and release all resources
      */
     _destroyDock() {
-        this._cancelHide();
-        this._cancelShiftClick();
-        this._resetDragState();
-        this._cancelRefreshDockItems();
-        this._clearMenuWindowSignals();
-        this._destroyLabel();
-        this._closeTrashMenu();
+        try {
+            this._cancelHide();
+            this._cancelShiftClick();
+            this._cancelDragTimeout();
+            this._resetDragState();
+            this._cancelRefreshDockItems();
+            this._clearMenuWindowSignals();
+            this._destroyLabel();
+            this._closeTrashMenu();
 
-        if (this._shiftMinimizeTimeoutId) {
-            GLib.Source.remove(this._shiftMinimizeTimeoutId);
-            this._shiftMinimizeTimeoutId = 0;
-        }
-
-        if (this._updateIconGeometriesIdleId) {
-            GLib.Source.remove(this._updateIconGeometriesIdleId);
-            this._updateIconGeometriesIdleId = 0;
-        }
-
-        if (this._iconGeometryBatchId) {
-            GLib.Source.remove(this._iconGeometryBatchId);
-            this._iconGeometryBatchId = 0;
-        }
-        this._iconGeometryUpdates = null;
-
-        if (this._menu) {
-            try {
-                this._menu.destroy();
-            } catch (e) {
+            if (this._shiftMinimizeTimeoutId) {
+                GLib.Source.remove(this._shiftMinimizeTimeoutId);
+                this._shiftMinimizeTimeoutId = 0;
             }
-            this._menu = null;
-        }
-        this._menuIsEmpty = false;
-        this._menuTransitioning = false;
 
-        if (this._layoutIdleId) {
-            GLib.Source.remove(this._layoutIdleId);
-            this._layoutIdleId = 0;
-        }
+            if (this._updateIconGeometriesIdleId) {
+                GLib.Source.remove(this._updateIconGeometriesIdleId);
+                this._updateIconGeometriesIdleId = 0;
+            }
 
-        if (this._dockBox) {
-            if (this._dockEnterId) {
+            if (this._iconGeometryBatchId) {
+                GLib.Source.remove(this._iconGeometryBatchId);
+                this._iconGeometryBatchId = 0;
+            }
+            this._iconGeometryUpdates = null;
+
+            if (this._menu) {
                 try {
-                    this._dockBox.disconnect(this._dockEnterId);
+                    this._menu.destroy();
                 } catch (e) {
                 }
-                this._dockEnterId = null;
+                this._menu = null;
             }
-            if (this._dockLeaveId) {
+            this._menuIsEmpty = false;
+            this._menuTransitioning = false;
+
+            if (this._layoutIdleId) {
+                GLib.Source.remove(this._layoutIdleId);
+                this._layoutIdleId = 0;
+            }
+
+            if (this._dockBox) {
+                if (this._dockEnterId) {
+                    try {
+                        this._dockBox.disconnect(this._dockEnterId);
+                    } catch (e) {
+                    }
+                    this._dockEnterId = null;
+                }
+                if (this._dockLeaveId) {
+                    try {
+                        this._dockBox.disconnect(this._dockLeaveId);
+                    } catch (e) {
+                    }
+                    this._dockLeaveId = null;
+                }
+                if (this._alignXConstraint) {
+                    try {
+                        this._dockBox.remove_constraint(this._alignXConstraint);
+                    } catch (e) {
+                    }
+                    try {
+                        this._alignXConstraint.destroy?.();
+                    } catch (e) {
+                    }
+                    this._alignXConstraint = null;
+                }
+                for (const child of [...this._dockBox.get_children()]) {
+                    try {
+                        child.destroy();
+                    } catch (e) {
+                    }
+                }
+                this._iconActors.clear();
+                this._trashBox = null;
+                this._trashIcon = null;
                 try {
-                    this._dockBox.disconnect(this._dockLeaveId);
+                    Main.layoutManager.removeChrome(this._dockBox);
                 } catch (e) {
                 }
-                this._dockLeaveId = null;
-            }
-            if (this._alignXConstraint) {
                 try {
-                    this._dockBox.remove_constraint(this._alignXConstraint);
+                    this._dockBox.destroy();
                 } catch (e) {
                 }
-                try {
-                    this._alignXConstraint.destroy?.();
-                } catch (e) {
-                }
-                this._alignXConstraint = null;
+                this._dockBox = null;
             }
-            for (const child of [...this._dockBox.get_children()]) {
-                try {
-                    child.destroy();
-                } catch (e) {
-                }
-            }
-            this._iconActors.clear();
-            this._trashBox = null;
-            this._trashIcon = null;
-            try {
-                Main.layoutManager.removeChrome(this._dockBox);
-            } catch (e) {
-            }
-            try {
-                this._dockBox.destroy();
-            } catch (e) {
-            }
-            this._dockBox = null;
+            this._dragSpace = null;
+            this._visible = false;
+            this._inOverview = false;
+            this._shiftClickCursor.clear();
+            this._windowCycleCursor.clear();
+            this._windowCycleHistory.clear();
+        } catch (e) {
         }
-        this._dragSpace = null;
-        this._visible = false;
-        this._inOverview = false;
-        this._shiftClickCursor.clear();
-        this._windowCycleCursor.clear();
-        this._windowCycleHistory.clear();
     }
 
     /**
@@ -4019,35 +4412,38 @@ export class ModuleDock {
      * @brief Disable the dock and release all resources
      */
     disable() {
-        if (this._settingsShowEnableChangedId) {
-            this._settings.disconnect(this._settingsShowEnableChangedId);
-            this._settingsShowEnableChangedId = null;
+        try {
+            if (this._settingsShowEnableChangedId) {
+                this._settings.disconnect(this._settingsShowEnableChangedId);
+                this._settingsShowEnableChangedId = null;
+            }
+            if (this._settingsIconSizeChangedId) {
+                this._settings.disconnect(this._settingsIconSizeChangedId);
+                this._settingsIconSizeChangedId = null;
+            }
+            if (this._settingsBgColorChangedId) {
+                this._settings.disconnect(this._settingsBgColorChangedId);
+                this._settingsBgColorChangedId = null;
+            }
+            if (this._settingsBgOpacityChangedId) {
+                this._settings.disconnect(this._settingsBgOpacityChangedId);
+                this._settingsBgOpacityChangedId = null;
+            }
+            this._destroyDock();
+            this._disconnectMonitor();
+            this._disconnectMousePoll();
+            this._shiftClickCursor.clear();
+            this._windowCycleCursor.clear();
+            this._windowCycleHistory.clear();
+            if (this._menuManager) {
+                this._menuManager = null;
+            }
+            if (this._trashMenuManager) {
+                this._trashMenuManager = null;
+            }
+            this._settings = null;
+        } catch (e) {
         }
-        if (this._settingsIconSizeChangedId) {
-            this._settings.disconnect(this._settingsIconSizeChangedId);
-            this._settingsIconSizeChangedId = null;
-        }
-        if (this._settingsBgColorChangedId) {
-            this._settings.disconnect(this._settingsBgColorChangedId);
-            this._settingsBgColorChangedId = null;
-        }
-        if (this._settingsBgOpacityChangedId) {
-            this._settings.disconnect(this._settingsBgOpacityChangedId);
-            this._settingsBgOpacityChangedId = null;
-        }
-        this._destroyDock();
-        this._disconnectMonitor();
-        this._disconnectMousePoll();
-        this._shiftClickCursor.clear();
-        this._windowCycleCursor.clear();
-        this._windowCycleHistory.clear();
-        if (this._menuManager) {
-            this._menuManager = null;
-        }
-        if (this._trashMenuManager) {
-            this._trashMenuManager = null;
-        }
-        this._settings = null;
     }
 }
 
@@ -4110,7 +4506,11 @@ class DockDragAgent extends GObject.Object {
      * @return A new DockDragActor instance
      */
     getDragActor() {
-        return new DockDragActor(this._appInfo, this._module._itemSize, this._module._iconSize);
+        try {
+            return new DockDragActor(this._appInfo, this._module._itemSize, this._module._iconSize);
+        } catch (e) {
+            return null;
+        }
     }
 
     /**
@@ -4125,8 +4525,8 @@ class DockDragAgent extends GObject.Object {
      * @brief Forward the drag-over event to the module
      * @param source The drag source object
      * @param actor The drag actor
-     * @param x Pointer X in stage coordinates
-     * @param y Pointer Y in stage coordinates
+     * @param x Local X in drop target coordinates
+     * @param y Local Y in drop target coordinates
      * @param time Event time
      * @return The drag motion result
      */
@@ -4138,8 +4538,8 @@ class DockDragAgent extends GObject.Object {
      * @brief Forward the drop event to the module
      * @param source The drag source object
      * @param actor The drag actor
-     * @param x Pointer X in stage coordinates
-     * @param y Pointer Y in stage coordinates
+     * @param x Local X in drop target coordinates
+     * @param y Local Y in drop target coordinates
      * @param time Event time
      * @return True if the drop was accepted
      */
@@ -4164,8 +4564,8 @@ class DockDragSpace extends GObject.Object {
      * @brief Forward the drag-over event to the module
      * @param source The drag source object
      * @param actor The drag actor
-     * @param x Pointer X in stage coordinates
-     * @param y Pointer Y in stage coordinates
+     * @param x Local X in drop target coordinates
+     * @param y Local Y in drop target coordinates
      * @param time Event time
      * @return The drag motion result
      */
@@ -4177,8 +4577,8 @@ class DockDragSpace extends GObject.Object {
      * @brief Forward the drop event to the module
      * @param source The drag source object
      * @param actor The drag actor
-     * @param x Pointer X in stage coordinates
-     * @param y Pointer Y in stage coordinates
+     * @param x Local X in drop target coordinates
+     * @param y Local Y in drop target coordinates
      * @param time Event time
      * @return True if the drop was accepted
      */

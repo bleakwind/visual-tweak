@@ -1,7 +1,7 @@
 /* vim: set expandtab tabstop=4 softtabstop=4 shiftwidth=4: */
 /**
  * +-------------------------------------------------------------------------+
- * | $Id: module_dock.js 2026-11-12 09:08:58 Bleakwind Exp $                 |
+ * | $Id: module_dock.js 2026-11-26 15:29:26 Bleakwind Exp $                 |
  * +-------------------------------------------------------------------------+
  * | Copyright (c) 2008-2026 Bleakwind(Rick Wu).                             |
  * +-------------------------------------------------------------------------+
@@ -3485,16 +3485,17 @@ export class ModuleDock {
         const closeBtn = new St.Button({
             reactive: true,
             can_focus: false,
+            track_hover: true,
             width: MENU_OPEN_CLOSEBTN_SIZE,
             height: MENU_OPEN_CLOSEBTN_SIZE,
             x_align: Clutter.ActorAlign.END,
             y_align: Clutter.ActorAlign.CENTER,
-            style: 'background-color: rgba(0,0,0,0.1); border-radius: 10px;',
+            style_class: 'dock-menu-closebtn',
         });
         const closeIcon = new St.Icon({
             icon_name: 'window-close-symbolic',
             icon_size: 12,
-            style: 'color: #000000;',
+            style_class: 'dock-menu-closeico',
         });
         closeBtn.set_child(closeIcon);
         closeBtn.connect('clicked', () => {
@@ -3735,14 +3736,15 @@ export class ModuleDock {
         const closeBtn = new St.Button({
             reactive: true,
             can_focus: false,
+            track_hover: true,
             width: MENU_OPEN_CLOSEBTN_SIZE,
             height: MENU_OPEN_CLOSEBTN_SIZE,
-            style: 'background-color: rgba(0,0,0,0.45); border-radius: 10px;',
+            style_class: 'dock-menu-closebtn',
         });
         const closeIcon = new St.Icon({
             icon_name: 'window-close-symbolic',
             icon_size: 12,
-            style: 'color: #ffffff;',
+            style_class: 'dock-menu-closeico',
         });
         closeBtn.set_child(closeIcon);
         closeBtn.set_position(

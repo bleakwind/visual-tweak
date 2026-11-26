@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-12 09:08+0800\n"
-"PO-Revision-Date: 2026-11-12 09:11+0800\n"
+"POT-Creation-Date: 2026-11-26 15:29+0800\n"
+"PO-Revision-Date: 2026-11-26 19:16+0800\n"
 "Last-Translator: Rick Wu <bleakwind@qq.com>\n"
 "Language-Team: Chinese (simplified) <i18n-zh@googlegroups.com>\n"
 "Language: zh_CN\n"
@@ -372,10 +372,10 @@ msgstr "回收站"
 msgid "Empty Trash"
 msgstr "清空回收站"
 
-#: module_dock.js:3438 module_dock.js:3661
+#: module_dock.js:3438 module_dock.js:3662
 msgid "(Untitled Window)"
 msgstr "(无标题窗口)"
 
-#: module_dock.js:3727
+#: module_dock.js:3728
 msgid "[No Thumbnail]"
 msgstr "[无缩略图]"

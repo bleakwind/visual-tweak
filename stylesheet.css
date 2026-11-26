@@ -84,3 +84,14 @@
 .visual-tweak-dock-menu .dock-menu-winlist:hover {
     background-color: rgba(0, 0, 0, 0.3);
 }
+.visual-tweak-dock-menu .dock-menu-closebtn {
+    background-color: rgba(0, 0, 0, 0.12);
+    border-radius: 10px;
+    transition-duration: 120ms;
+}
+.visual-tweak-dock-menu .dock-menu-closebtn:hover {
+    background-color: rgba(0, 0, 0, 0.18);
+}
+.visual-tweak-dock-menu .dock-menu-closebtn .dock-menu-closeico {
+    color: #000000;
+}
